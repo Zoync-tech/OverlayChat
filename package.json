@@ -1,0 +1,32 @@
+{
+  "name": "overlaychat-desktop",
+  "version": "1.0.8",
+  "description": "Windows overlay app for OverlayChat",
+  "author": "OverlayChat",
+  "main": "desktop/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win"
+  },
+  "build": {
+    "appId": "com.overlaychat.desktop",
+    "productName": "OverlayChat",
+    "directories": {
+      "buildResources": "desktop"
+    },
+    "files": [
+      "desktop/**/*",
+      "assets/**/*",
+      "overlay.html",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "signAndEditExecutable": false
+    }
+  },
+  "devDependencies": {
+    "electron": "^35.2.0",
+    "electron-builder": "^26.0.12"
+  }
+}

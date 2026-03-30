@@ -1,0 +1,32 @@
+{
+  "rules": {
+    "rooms": {
+      "$roomId": {
+        "meta": {
+          ".read": true,
+          ".write": true
+        },
+        "chat": {
+          ".read": true,
+          ".write": true,
+          "$messageId": {
+            ".validate": "newData.val() == null || (newData.child('name').isString() && newData.child('message').isString())"
+          }
+        },
+        "predictions": {
+          ".read": true,
+          ".write": true,
+          "$clientId": {
+            ".validate": "newData.val() == null || (newData.hasChildren(['clientId', 'name', 'predictedWinner', 'updatedAt']))"
+          }
+        }
+      }
+    },
+    "active_sessions": {
+      ".read": true,
+      "$roomId": {
+        ".write": true
+      }
+    }
+  }
+}

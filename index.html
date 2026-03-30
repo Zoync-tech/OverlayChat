@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OverlayChat Audience</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./assets/styles.css" />
+    <link rel="stylesheet" href="./assets/ui-overrides.css" />
+  </head>
+  <body class="app-shell">
+    <div class="ambient ambient-left"></div>
+    <div class="ambient ambient-right"></div>
+    <main class="page page-audience">
+      <section id="audienceGate" class="panel audience-gate hidden">
+        <div class="panel-header">
+          <div>
+            <p class="panel-kicker">Join Match</p>
+            <h2>Enter the match code</h2>
+          </div>
+        </div>
+        <form id="roomJoinForm" class="stack-form">
+          <label>
+            Match code
+            <input
+              id="roomCode"
+              name="roomCode"
+              maxlength="40"
+              placeholder="e.g. ipl-main"
+              required
+            />
+          </label>
+          <button type="submit" class="primary-btn">Join audience room</button>
+        </form>
+
+        <div id="activeDiscovery" class="active-discovery hidden">
+          <p class="discovery-kicker">Live Matches Now</p>
+          <div id="activeSessionsList" class="active-sessions-grid"></div>
+        </div>
+      </section>
+
+      <div id="audienceApp" class="hidden">
+        <section class="hero audience-hero audience-hero-compact">
+          <div class="hero-meta">
+            <span>Code: <strong id="roomBadge">loading...</strong></span>
+            <span id="matchBadge">Waiting for match setup</span>
+          </div>
+        </section>
+
+        <section id="setupNotice" class="setup-notice hidden">
+          Firebase is not configured yet. Add your keys in
+          <code>assets/firebase-config.js</code>, then refresh.
+        </section>
+
+        <div class="grid-two">
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="panel-kicker">Prediction</p>
+                <h2>Submit your call</h2>
+              </div>
+              <span class="status-pill" id="predictionStatus">Live</span>
+            </div>
+
+            <form id="predictionForm" class="stack-form">
+              <label>
+                Your name
+                <input id="viewerName" name="viewerName" maxlength="30" required />
+              </label>
+
+              <div class="dual-row">
+                <label>
+                  <span id="labelScoreA">Team A Score</span>
+                  <input
+                    type="number"
+                    id="scoreA"
+                    name="scoreA"
+                    placeholder="0"
+                    min="0"
+                    max="999"
+                    required
+                  />
+                </label>
+                <label>
+                  <span id="labelScoreB">Team B Score</span>
+                  <input
+                    type="number"
+                    id="scoreB"
+                    name="scoreB"
+                    placeholder="0"
+                    min="0"
+                    max="999"
+                    required
+                  />
+                </label>
+              </div>
+
+              <label>
+                Predicted winner
+                <select id="predictedWinner" name="predictedWinner" required>
+                  <option value="">Choose winner</option>
+                </select>
+              </label>
+
+              <button type="submit" class="primary-btn">Send prediction</button>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="panel-kicker">Live Chat</p>
+                <h2>Chat with the audience</h2>
+              </div>
+              <span class="status-pill neutral" id="chatStatus">Listening</span>
+            </div>
+
+            <form id="chatForm" class="chat-compose">
+              <label>
+                Message
+                <textarea
+                  id="chatMessage"
+                  name="chatMessage"
+                  rows="3"
+                  maxlength="200"
+                  placeholder="Back your team here..."
+                  required
+                ></textarea>
+              </label>
+              <button type="submit" class="primary-btn">Send message</button>
+            </form>
+
+            <div class="chat-feed" id="chatFeed"></div>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <script type="module" src="./assets/audience.js"></script>
+  </body>
+</html>

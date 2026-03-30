@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OverlayChat Desktop</title>
+    <link rel="stylesheet" href="./control.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="app-header">
+        <div class="header-content">
+          <span class="badge">Desktop</span>
+          <h1>Overlay Executive</h1>
+          <p>Control the broadcast overlay in real-time.</p>
+        </div>
+      </header>
+
+      <div class="content-grid">
+        <section class="panel-group">
+          <h2 class="group-title">Match Configuration</h2>
+          <div class="glass-card">
+            <form id="settingsForm" class="stack">
+              <div class="form-row">
+                <label for="roomId">Room Identity</label>
+                <input id="roomId" name="roomId" maxlength="40" placeholder="e.g. ipl-main" required />
+              </div>
+
+              <div class="form-row">
+                <label for="matchTitle">Broadcast Title</label>
+                <input id="matchTitle" name="matchTitle" maxlength="60" placeholder="Match #001" required />
+              </div>
+
+              <div class="dual-row">
+                <div class="form-row">
+                  <label for="teamA">Home Team</label>
+                  <input id="teamA" name="teamA" maxlength="30" placeholder="Team A" required />
+                </div>
+                <div class="form-row">
+                  <label for="teamB">Away Team</label>
+                  <input id="teamB" name="teamB" maxlength="30" placeholder="Team B" required />
+                </div>
+              </div>
+
+              <div class="form-row">
+                <label class="toggle-row">
+                  <span>Allow re-prediction</span>
+                  <input type="checkbox" id="allowReprediction" class="toggle-input" />
+                  <div class="toggle-track"></div>
+                </label>
+              </div>
+
+
+              <div class="dual-row">
+                <div class="form-row">
+                  <label class="toggle-row">
+                    <span>Disable Home Score</span>
+                    <input type="checkbox" id="disableScoreA" class="toggle-input" title="Disable entries for Home Team" />
+                    <div class="toggle-track"></div>
+                  </label>
+                </div>
+                <div class="form-row">
+                  <label class="toggle-row">
+                    <span>Disable Away Score</span>
+                    <input type="checkbox" id="disableScoreB" class="toggle-input" title="Disable entries for Away Team" />
+                    <div class="toggle-track"></div>
+                  </label>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <label>Audience Access</label>
+                <div class="input-action-group">
+                  <input id="audienceUrl" readonly />
+                  <button id="copyAudienceUrl" class="action-btn" type="button">Copy</button>
+                </div>
+              </div>
+
+              <button class="primary-btn wide-btn" type="submit">Deploy Changes</button>
+            </form>
+          </div>
+        </section>
+
+        <section class="panel-group">
+          <h2 class="group-title">Window & Engine</h2>
+          <div class="glass-card stack">
+            <div class="control-row">
+              <label>Master Opacity</label>
+              <div class="slider-group">
+                <input id="opacity" type="range" min="0.2" max="1" step="0.05" />
+                <span id="opacityValue" class="value-tag">100%</span>
+              </div>
+            </div>
+
+            <div class="action-grid">
+              <button id="showOverlay" class="glass-btn">Show</button>
+              <button id="hideOverlay" class="glass-btn">Hide</button>
+              <button id="reloadOverlay" class="glass-btn">Reload</button>
+              <button id="resetBounds" class="glass-btn">Reset</button>
+            </div>
+
+            <button id="togglePredictionPause" class="secondary-btn wide-btn">
+              Pause Predictions
+            </button>
+            <button id="toggleHideChat" class="secondary-btn wide-btn">
+              Hide Live Chat
+            </button>
+            <button id="toggleHideJoin" class="secondary-btn wide-btn">
+              Hide Join Section
+            </button>
+          </div>
+
+          <h2 class="group-title">Match Data Management</h2>
+          <div class="glass-card stack">
+            <p class="section-hint">Clear data when starting a new match with the same Room ID.</p>
+            <div class="action-grid">
+              <button id="clearPredictions" class="glass-btn danger">Clear Predictions</button>
+              <button id="clearChat" class="glass-btn danger">Clear Chat</button>
+            </div>
+          </div>
+
+          <div class="status-panel">
+            <div class="status-item">
+              <span class="dot" id="dotOverlay"></span>
+              <span class="label">Visibility</span>
+              <span class="value" id="overlayStatus">--</span>
+            </div>
+            <div class="status-item">
+              <span class="dot" id="dotInteractivity"></span>
+              <span class="label">Interaction</span>
+              <span class="value" id="clickThroughStatus">--</span>
+            </div>
+            <div class="status-item">
+              <span class="dot" id="dotPredictions"></span>
+              <span class="label">Predictions</span>
+              <span class="value" id="predictionPauseStatus">--</span>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <script type="module" src="./control.js"></script>
+  </body>
+</html>

@@ -238,17 +238,25 @@ const renderPredictions = (predictions) => {
           const sA = prediction.scoreA;
           const isAChaser = lowChaser === lowA;
           const isOver = is2ndInnings && isAChaser && isChasingWinner;
-          const suffix = isOver ? " ov" : "";
-          const displayVal = isOver ? (Number(sA) || 0).toFixed(1) : sA;
-          scores.push(`<span class="team-a-highlight">${escapeHtml(teamAName)}: ${displayVal}${suffix}</span>`);
+          
+          // Requirement: Hide 1st innings score (non-chaser) when in 2nd innings
+          if (!is2ndInnings || isAChaser) {
+            const suffix = isOver ? " ov" : "";
+            const displayVal = isOver ? (Number(sA) || 0).toFixed(1) : sA;
+            scores.push(`<span class="team-a-highlight">${escapeHtml(teamAName)}: ${displayVal}${suffix}</span>`);
+          }
         }
         if (hasScoreB) {
           const sB = prediction.scoreB;
           const isBChaser = lowChaser === lowB;
           const isOver = is2ndInnings && isBChaser && isChasingWinner;
-          const suffix = isOver ? " ov" : "";
-          const displayVal = isOver ? (Number(sB) || 0).toFixed(1) : sB;
-          scores.push(`<span class="team-b-highlight">${escapeHtml(teamBName)}: ${displayVal}${suffix}</span>`);
+
+          // Requirement: Hide 1st innings score (non-chaser) when in 2nd innings
+          if (!is2ndInnings || isBChaser) {
+            const suffix = isOver ? " ov" : "";
+            const displayVal = isOver ? (Number(sB) || 0).toFixed(1) : sB;
+            scores.push(`<span class="team-b-highlight">${escapeHtml(teamBName)}: ${displayVal}${suffix}</span>`);
+          }
         }
         displayScore = scores.join('<span class="score-divider">-</span>');
       } else {

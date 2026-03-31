@@ -37,44 +37,59 @@ const updateTickerDOM = () => {
 
   // 1b. Fan Predictions (Grouped)
   if (currentPredictions.length > 0) {
-    const fanParts = currentPredictions.map(p => {
-      const teamA = (currentMeta.teamA || "Home Team").toString().trim();
-      const teamB = (currentMeta.teamB || "Away Team").toString().trim();
-      const is2ndInnings = Boolean(currentMeta.secondInnings);
-      
-      const lowA = teamA.toLowerCase();
-      const lowB = teamB.toLowerCase();
+    const is2ndInnings = Boolean(currentMeta.secondInnings);
+    const teamA = (currentMeta.teamA || "Home Team").toString().trim();
+    const teamB = (currentMeta.teamB || "Away Team").toString().trim();
+    const lowA = teamA.toLowerCase();
+    const lowB = teamB.toLowerCase();
 
-      // Infer chasing team:
-      let chasingTeam = null;
-      if (is2ndInnings) {
-        if (currentMeta.disableScoreA && !currentMeta.disableScoreB) chasingTeam = teamB;
-        else if (currentMeta.disableScoreB && !currentMeta.disableScoreA) chasingTeam = teamA;
-      }
+    // Infer chasing team for 2nd innings filtering
+    let chasingTeam = null;
+    if (is2ndInnings) {
+      if (currentMeta.disableScoreA && !currentMeta.disableScoreB) chasingTeam = teamB;
+      else if (currentMeta.disableScoreB && !currentMeta.disableScoreA) chasingTeam = teamA;
+    }
+    const lowChaser = (chasingTeam || "").toLowerCase();
 
-      const lowChaser = (chasingTeam || "").toLowerCase();
-      const predictedWinnerOrig = (p.winner || "Undecided").toString().trim();
-      const predictedWinnerLow = predictedWinnerOrig.toLowerCase();
-      const isChasingWinner = lowChaser && predictedWinnerLow === lowChaser;
+    const fanParts = currentPredictions
+      .map((p) => {
+        const predictedWinnerOrig = (p.winner || "Undecided").toString().trim();
+        const predictedWinnerLow = predictedWinnerOrig.toLowerCase();
+        const isChasingWinner = lowChaser && predictedWinnerLow === lowChaser;
 
-      const detailParts = [];
-      if (!currentMeta.disableScoreA) {
-        const isAChaser = lowChaser === lowA;
-        const isOver = is2ndInnings && isAChaser && isChasingWinner;
-        const suffix = isOver ? " ov" : "";
-        const displayVal = isOver ? (Number(p.scoreA) || 0).toFixed(1) : p.scoreA;
-        detailParts.push(`${teamA} ${displayVal}${suffix}`);
-      }
-      if (!currentMeta.disableScoreB) {
-        const isBChaser = lowChaser === lowB;
-        const isOver = is2ndInnings && isBChaser && isChasingWinner;
-        const suffix = isOver ? " ov" : "";
-        const displayVal = isOver ? (Number(p.scoreB) || 0).toFixed(1) : p.scoreB;
-        detailParts.push(`${teamB} ${displayVal}${suffix}`);
-      }
-      
-      return `${p.name} (${predictedWinnerOrig}): ${detailParts.join(' - ')}`;
-    });
+        const detailParts = [];
+        
+        // Helper to check if we should display this score
+        // Requirements: 
+        // 1. Skip non-chaser predictions in 2nd innings
+        // 2. Hide 0 or 0.0 scores/overs
+        const shouldShow = (score, isTeamChaser) => {
+          const num = Number(score) || 0;
+          if (num <= 0) return false;
+          if (is2ndInnings) return isTeamChaser;
+          return true;
+        };
+
+        if (!currentMeta.disableScoreA && shouldShow(p.scoreA, lowChaser === lowA)) {
+          const isAChaser = lowChaser === lowA;
+          const isOver = is2ndInnings && isAChaser && isChasingWinner;
+          const suffix = isOver ? " ov" : "";
+          const displayVal = isOver ? (Number(p.scoreA) || 0).toFixed(1) : p.scoreA;
+          detailParts.push(`${displayVal}${suffix}`);
+        }
+        if (!currentMeta.disableScoreB && shouldShow(p.scoreB, lowChaser === lowB)) {
+          const isBChaser = lowChaser === lowB;
+          const isOver = is2ndInnings && isBChaser && isChasingWinner;
+          const suffix = isOver ? " ov" : "";
+          const displayVal = isOver ? (Number(p.scoreB) || 0).toFixed(1) : p.scoreB;
+          detailParts.push(`${displayVal}${suffix}`);
+        }
+
+        if (detailParts.length === 0) return null;
+        
+        return `${p.name} (${predictedWinnerOrig}): ${detailParts.join(" - ")}`;
+      })
+      .filter(Boolean);
 
     items.push(`
       <span class="ticker-item fan-prediction">

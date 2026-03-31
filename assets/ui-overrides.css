@@ -80,3 +80,8 @@
 .overlay-widget:hover .overlay-drag-orb {
   opacity: 0.8;
 }
+
+/* Prediction Form Layout refinements */
+.stack-form .dual-row.single-col {
+  grid-template-columns: 1fr !important;
+}

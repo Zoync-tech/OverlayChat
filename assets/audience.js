@@ -55,6 +55,7 @@ let predictionsPaused = false;
 let allowReprediction = false;
 let currentMeta = {};
 let chasingTeam = null;
+let isEditingReprediction = false;
 
 const normalizeRoomCode = (value) =>
   value.toLowerCase().replace(/[^a-z0-9-_]/g, "").slice(0, 40);
@@ -93,9 +94,16 @@ const syncPredictionAccess = (meta = {}) => {
     return;
   }
 
+  // If locked but allowed to repredict, fields remain disabled until user clicks Update
+  if (predictionLocked && allowReprediction && !isEditingReprediction) {
+    setPredictionInputsDisabled(true, meta);
+    predictionSubmitButton.textContent = "Update prediction";
+    return;
+  }
+
   setPredictionInputsDisabled(false, meta);
   predictionSubmitButton.textContent = predictionLocked
-    ? "Update prediction"
+    ? (isEditingReprediction ? "Save updated prediction" : "Update prediction")
     : "Send prediction";
 };
 
@@ -150,9 +158,7 @@ const renderWinnerOptions = (meta = {}) => {
     matchBadge.textContent = "Waiting for match setup";
   }
 
-  // Update Score Labels
-  if (labelScoreA) labelScoreA.textContent = `${meta.teamA || "Team A"} Score`;
-  if (labelScoreB) labelScoreB.textContent = `${meta.teamB || "Team B"} Score`;
+  // Labels are managed dynamically by updateInningsLabels() — do not reset them here.
 
   syncPredictionAccess(meta);
 };
@@ -175,22 +181,41 @@ const updateInningsLabels = () => {
   const lowChaser = (chasingTeam || "").toLowerCase();
   const isChasingWinner = lowChaser && winner === lowChaser;
 
+  // Toggle single column layout if one score is hidden
+  const dualRow = document.querySelector(".dual-row");
+  if (dualRow) {
+    const hasHidden = is2ndInnings && (Boolean(currentMeta.disableScoreA) || Boolean(currentMeta.disableScoreB));
+    dualRow.classList.toggle("single-col", hasHidden);
+  }
+
   const lowA = teamA.toLowerCase();
   const lowB = teamB.toLowerCase();
 
   if (labelScoreA) {
     const isChaser = lowChaser === lowA;
     const isOversMode = is2ndInnings && isChaser && isChasingWinner;
+    
+    // Requirement: Hide 1st innings score in 2nd innings
+    const isFinished = is2ndInnings && Boolean(currentMeta.disableScoreA);
+    labelScoreA.parentElement.classList.toggle("hidden", isFinished);
+
     labelScoreA.textContent = isOversMode ? `${teamA} Overs` : `${teamA} Score`;
-    scoreAInput.step = isOversMode ? "0.1" : "1";
+    // If it's the 2nd innings, allow decimals for both fields to be safe
+    scoreAInput.step = is2ndInnings ? "any" : "1";
     scoreAInput.placeholder = isOversMode ? "e.g. 18.2" : "0";
   }
   
   if (labelScoreB) {
     const isChaser = lowChaser === lowB;
     const isOversMode = is2ndInnings && isChaser && isChasingWinner;
+
+    // Requirement: Hide 1st innings score in 2nd innings
+    const isFinished = is2ndInnings && Boolean(currentMeta.disableScoreB);
+    labelScoreB.parentElement.classList.toggle("hidden", isFinished);
+
     labelScoreB.textContent = isOversMode ? `${teamB} Overs` : `${teamB} Score`;
-    scoreBInput.step = isOversMode ? "0.1" : "1";
+    // If it's the 2nd innings, allow decimals for both fields to be safe
+    scoreBInput.step = is2ndInnings ? "any" : "1";
     scoreBInput.placeholder = isOversMode ? "e.g. 18.2" : "0";
   }
 };
@@ -316,6 +341,14 @@ if (!roomSelected) {
 
 predictionForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
+
+  // Handle 'Update' click to toggle edit mode
+  if (predictionLocked && allowReprediction && !isEditingReprediction && !predictionsPaused) {
+    isEditingReprediction = true;
+    syncPredictionAccess(currentMeta);
+    return;
+  }
+
   if (!isFirebaseConfigured || !db || (predictionLocked && !allowReprediction) || predictionsPaused) {
     syncPredictionAccess();
     return;
@@ -340,12 +373,14 @@ predictionForm?.addEventListener("submit", async (event) => {
       const overs = parseInt(parts[0]);
       
       if (balls > 5) {
-        setStatus(predictionStatus, "Invalid over count. Balls must be 0-5.", "danger");
+        setStatus(predictionStatus, "Invalid overs — decimal must be .0 to .5 (balls)", "danger");
         return;
       }
-      
-      if (overs < 0 || (overs === 20 && balls > 0) || overs > 20) {
-        setStatus(predictionStatus, "Overs must be between 0.0 and 20.0", "danger");
+
+      const isZero = overs === 0 && balls === 0;
+      const exceedsMax = overs > 20 || (overs === 20 && balls > 0);
+      if (isZero || overs < 0 || exceedsMax) {
+        setStatus(predictionStatus, "Overs must be between 0.1 and 20.0", "danger");
         return;
       }
 
@@ -376,7 +411,8 @@ predictionForm?.addEventListener("submit", async (event) => {
       predictedWinner
     });
     predictionLocked = true;
-    syncPredictionAccess();
+    isEditingReprediction = false;
+    syncPredictionAccess(currentMeta);
     setStatus(predictionStatus, "Prediction locked", "neutral");
   } catch (error) {
     console.error(error);

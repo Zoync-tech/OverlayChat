@@ -11,6 +11,10 @@ contextBridge.exposeInMainWorld("overlayDesktop", {
   openControls: () => ipcRenderer.invoke("overlay:open-controls"),
   openExternal: (url) => ipcRenderer.invoke("external:open", url),
   copyText: (value) => ipcRenderer.invoke("clipboard:write-text", value),
+  showTicker: () => ipcRenderer.invoke("ticker:show"),
+  hideTicker: () => ipcRenderer.invoke("ticker:hide"),
+  reloadTicker: () => ipcRenderer.invoke("ticker:reload"),
+  resetTickerBounds: () => ipcRenderer.invoke("ticker:reset-bounds"),
   onSettingsChanged: (callback) => {
     ipcRenderer.on("settings:changed", (_event, value) => callback(value));
   },

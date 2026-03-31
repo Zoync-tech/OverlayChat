@@ -18,7 +18,8 @@ import {
   hasExplicitRoomCode,
   rememberViewerName,
   setHidden,
-  sortByTimestampAscending
+  sortByTimestampAscending,
+  applyTeamTheme
 } from "./shared.js";
 
 const roomId = getRoomId();
@@ -52,6 +53,8 @@ const activeSessionsList = document.querySelector("#activeSessionsList");
 let predictionLocked = false;
 let predictionsPaused = false;
 let allowReprediction = false;
+let currentMeta = {};
+let chasingTeam = null;
 
 const normalizeRoomCode = (value) =>
   value.toLowerCase().replace(/[^a-z0-9-_]/g, "").slice(0, 40);
@@ -154,6 +157,47 @@ const renderWinnerOptions = (meta = {}) => {
   syncPredictionAccess(meta);
 };
 
+const updateInningsLabels = () => {
+  const winner = (predictedWinnerInput.value || "").toString().trim().toLowerCase();
+  const teamA = (currentMeta.teamA || "Home Team").toString().trim();
+  const teamB = (currentMeta.teamB || "Away Team").toString().trim();
+  const is2ndInnings = Boolean(currentMeta.secondInnings);
+  
+  // Infer chasing team:
+  // If 2nd innings is ON, the team that is NOT disabled is currently batting (chasing)
+  let inferredChaser = null;
+  if (is2ndInnings) {
+    if (currentMeta.disableScoreA && !currentMeta.disableScoreB) inferredChaser = teamB;
+    else if (currentMeta.disableScoreB && !currentMeta.disableScoreA) inferredChaser = teamA;
+  }
+
+  chasingTeam = inferredChaser;
+  const lowChaser = (chasingTeam || "").toLowerCase();
+  const isChasingWinner = lowChaser && winner === lowChaser;
+
+  const lowA = teamA.toLowerCase();
+  const lowB = teamB.toLowerCase();
+
+  if (labelScoreA) {
+    const isChaser = lowChaser === lowA;
+    const isOversMode = is2ndInnings && isChaser && isChasingWinner;
+    labelScoreA.textContent = isOversMode ? `${teamA} Overs` : `${teamA} Score`;
+    scoreAInput.step = isOversMode ? "0.1" : "1";
+    scoreAInput.placeholder = isOversMode ? "e.g. 18.2" : "0";
+  }
+  
+  if (labelScoreB) {
+    const isChaser = lowChaser === lowB;
+    const isOversMode = is2ndInnings && isChaser && isChasingWinner;
+    labelScoreB.textContent = isOversMode ? `${teamB} Overs` : `${teamB} Score`;
+    scoreBInput.step = isOversMode ? "0.1" : "1";
+    scoreBInput.placeholder = isOversMode ? "e.g. 18.2" : "0";
+  }
+};
+
+predictedWinnerInput?.addEventListener("change", updateInningsLabels);
+predictedWinnerInput?.addEventListener("input", updateInningsLabels);
+
 const renderChat = (messages) => {
   if (!messages.length) {
     chatFeed.innerHTML = `<div class="empty-state">No chat yet. Be the first message.</div>`;
@@ -226,7 +270,11 @@ if (!roomSelected) {
     setStatus(chatStatus, "Setup required", "danger");
   } else {
     onValue(roomRef(roomId, "meta"), (snapshot) => {
-      renderWinnerOptions(snapshot.val() || {});
+      const meta = snapshot.val() || {};
+      currentMeta = meta;
+      applyTeamTheme(meta.teamA, meta.teamB);
+      renderWinnerOptions(meta);
+      updateInningsLabels();
     });
 
     onValue(query(roomRef(roomId, "chat"), limitToLast(20)), (snapshot) => {
@@ -244,8 +292,8 @@ if (!roomSelected) {
 
       if (prediction) {
         viewerNameInput.value = prediction.name || viewerNameInput.value;
-        scoreAInput.value = prediction.scoreA !== undefined ? prediction.scoreA : "";
-        scoreBInput.value = prediction.scoreB !== undefined ? prediction.scoreB : "";
+        scoreAInput.value = (prediction.scoreA !== undefined && prediction.scoreA !== null) ? prediction.scoreA : "";
+        scoreBInput.value = (prediction.scoreB !== undefined && prediction.scoreB !== null) ? prediction.scoreB : "";
         predictedWinnerInput.value = prediction.predictedWinner || "";
       }
 
@@ -274,9 +322,38 @@ predictionForm?.addEventListener("submit", async (event) => {
   }
 
   const name = viewerNameInput.value.trim();
-  const scoreA = scoreAInput.value !== "" ? Number(scoreAInput.value) : null;
-  const scoreB = scoreBInput.value !== "" ? Number(scoreBInput.value) : null;
+  let scoreA = scoreAInput.value !== "" ? Number(scoreAInput.value) : null;
+  let scoreB = scoreBInput.value !== "" ? Number(scoreBInput.value) : null;
   const predictedWinner = predictedWinnerInput.value.trim();
+  const lowWinner = predictedWinner.toLowerCase();
+  const lowChaser = (chasingTeam || "").toLowerCase();
+
+  // Validate Overs format for Chaser
+  if (lowChaser && lowWinner === lowChaser) {
+    const teamA = (currentMeta.teamA || "Team A").toString().trim();
+    const isAChaser = lowChaser === teamA.toLowerCase();
+    const val = isAChaser ? scoreAInput.value : scoreBInput.value;
+    
+    if (val !== "") {
+      const parts = val.split(".");
+      const balls = parts.length > 1 ? parseInt(parts[1]) : 0;
+      const overs = parseInt(parts[0]);
+      
+      if (balls > 5) {
+        setStatus(predictionStatus, "Invalid over count. Balls must be 0-5.", "danger");
+        return;
+      }
+      
+      if (overs < 0 || (overs === 20 && balls > 0) || overs > 20) {
+        setStatus(predictionStatus, "Overs must be between 0.0 and 20.0", "danger");
+        return;
+      }
+
+      // Ensure .0 is preserved if needed (stored as number, so we handle display later)
+      if (isAChaser) scoreA = Number(val);
+      else scoreB = Number(val);
+    }
+  }
 
   // Validate: all non-disabled fields must be filled
   const needsA = !scoreAInput.disabled && scoreA === null;

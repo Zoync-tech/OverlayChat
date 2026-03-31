@@ -6,7 +6,7 @@ import {
   roomRef,
   saveRoomMeta
 } from "./firebase.js";
-import { getAudienceEntryUrl, buildRoomUrl, getRoomId, setHidden } from "./shared.js";
+import { getAudienceEntryUrl, buildRoomUrl, getRoomId, setHidden, applyTeamTheme } from "./shared.js";
 
 const roomId = getRoomId();
 const hostRoomBadge = document.querySelector("#hostRoomBadge");
@@ -69,9 +69,9 @@ if (!isFirebaseConfigured || !db) {
     const meta = snapshot.val() || {};
     matchTitleInput.value = meta.matchTitle || "";
     teamAInput.value = meta.teamA || "";
-    teamBInput.value = meta.teamB || "";
     predictionsPausedInput.checked = Boolean(meta.predictionsPaused);
     allowRepredictionInput.checked = Boolean(meta.allowReprediction);
+    applyTeamTheme(meta.teamA, meta.teamB);
   });
 }
 

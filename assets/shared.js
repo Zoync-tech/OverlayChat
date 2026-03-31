@@ -94,3 +94,57 @@ export const escapeHtml = (value = "") =>
 export const setHidden = (element, shouldHide) => {
   element.classList.toggle("hidden", shouldHide);
 };
+
+export const TEAM_COLORS = {
+  MI: "#004BA0",
+  CSK: "#FFFF00",
+  RCB: "#EC1C24",
+  KKR: "#3A225D",
+  SRH: "#FF822A",
+  PBKS: "#D71920",
+  DC: "#004C99",
+  RR: "#EA1A84",
+  GT: "#1B2133",
+  LSG: "#961212"
+};
+
+const getContrastColor = (hex) => {
+  if (!hex || hex.length < 6) return "#ffffff";
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.6 ? "#000000" : "#ffffff";
+};
+
+export const applyTeamTheme = (teamA, teamB) => {
+  const getTeamCode = (name) => {
+    if (!name) return null;
+    const clean = String(name).toUpperCase().trim();
+    for (const code in TEAM_COLORS) {
+      if (clean === code || clean.startsWith(code + " ") || clean.includes(" " + code)) {
+        return code;
+      }
+    }
+    return null;
+  };
+
+  const codeA = getTeamCode(teamA);
+  const codeB = getTeamCode(teamB);
+
+  const colorA = TEAM_COLORS[codeA] || "#0A84FF";
+  const colorB = TEAM_COLORS[codeB] || "#FF453A";
+
+  const textA = getContrastColor(colorA);
+  const textB = getContrastColor(colorB);
+
+  const root = document.documentElement;
+  root.style.setProperty("--team-a", colorA);
+  root.style.setProperty("--team-b", colorB);
+  root.style.setProperty("--team-a-text", textA);
+  root.style.setProperty("--team-b-text", textB);
+
+  // Gradient helper (darkened for better text overlay if needed)
+  const grad = `linear-gradient(135deg, ${colorA}ee, ${colorB}ee)`;
+  root.style.setProperty("--team-gradient", grad);
+};

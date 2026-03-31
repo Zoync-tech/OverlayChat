@@ -15,11 +15,19 @@ const DEFAULT_SETTINGS = {
     height: 924,
     x: 80,
     y: 60
+  },
+  tickerVisible: false,
+  tickerBounds: {
+    width: 1200,
+    height: 60,
+    x: 100,
+    y: 800
   }
 };
 
 let controlWindow = null;
 let overlayWindow = null;
+let tickerWindow = null;
 
 const settingsPath = () => path.join(app.getPath("userData"), "settings.json");
 
@@ -63,6 +71,12 @@ const loadOverlayPage = (window) => {
   });
 };
 
+const loadTickerPage = (window) => {
+  window.loadFile(path.join(__dirname, "..", "ticker.html"), {
+    query: getOverlayQuery()
+  });
+};
+
 const broadcastState = () => {
   if (controlWindow && !controlWindow.isDestroyed()) {
     controlWindow.webContents.send("settings:changed", settings);
@@ -78,6 +92,29 @@ const applyOverlayFlags = () => {
   overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   overlayWindow.setIgnoreMouseEvents(settings.clickThrough, { forward: true });
   overlayWindow.setOpacity(settings.opacity);
+
+  if (tickerWindow && !tickerWindow.isDestroyed()) {
+    tickerWindow.setAlwaysOnTop(true, "screen-saver");
+    tickerWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    tickerWindow.setIgnoreMouseEvents(settings.clickThrough, { forward: true });
+    tickerWindow.setOpacity(settings.opacity);
+  }
+};
+
+const persistTickerBounds = () => {
+  if (!tickerWindow || tickerWindow.isDestroyed()) {
+    return;
+  }
+
+  const bounds = tickerWindow.getBounds();
+  settings.tickerBounds = {
+    width: bounds.width,
+    height: bounds.height,
+    x: bounds.x,
+    y: bounds.y
+  };
+  saveSettings();
+  broadcastState();
 };
 
 const persistOverlayBounds = () => {
@@ -106,9 +143,11 @@ const ensureOverlayWindow = () => {
     show: false,
     frame: false,
     transparent: true,
-    title: "OverlayChat",
-    titleBarStyle: "hidden",
     hasShadow: false,
+    title: " ",
+    darkTheme: true,
+    roundedCorners: false,
+    autoHideMenuBar: true,
     resizable: true,
     movable: true,
     fullscreenable: false,
@@ -124,6 +163,7 @@ const ensureOverlayWindow = () => {
   loadOverlayPage(overlayWindow);
   overlayWindow.setMenuBarVisibility(false);
   overlayWindow.removeMenu();
+  overlayWindow.on("page-title-updated", (e) => e.preventDefault());
   
   overlayWindow.once("ready-to-show", () => {
     applyOverlayFlags();
@@ -139,6 +179,55 @@ const ensureOverlayWindow = () => {
   });
 
   return overlayWindow;
+};
+
+const ensureTickerWindow = () => {
+  if (tickerWindow && !tickerWindow.isDestroyed()) {
+    return tickerWindow;
+  }
+
+  tickerWindow = new BrowserWindow({
+    ...settings.tickerBounds,
+    show: false,
+    frame: false,
+    transparent: true,
+    hasShadow: false,
+    title: " ",
+    darkTheme: true,
+    roundedCorners: false,
+    autoHideMenuBar: true,
+    resizable: true,
+    movable: true,
+    focusable: true,
+    fullscreenable: false,
+    skipTaskbar: false,
+    backgroundColor: "#00000000",
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+
+  loadTickerPage(tickerWindow);
+  tickerWindow.setMenuBarVisibility(false);
+  tickerWindow.removeMenu();
+  tickerWindow.on("page-title-updated", (e) => e.preventDefault());
+  
+  tickerWindow.once("ready-to-show", () => {
+    applyOverlayFlags();
+    if (settings.tickerVisible) {
+      tickerWindow.showInactive();
+    }
+  });
+
+  tickerWindow.on("move", persistTickerBounds);
+  tickerWindow.on("resize", persistTickerBounds);
+  tickerWindow.on("closed", () => {
+    tickerWindow = null;
+  });
+
+  return tickerWindow;
 };
 
 const ensureControlWindow = () => {
@@ -186,6 +275,10 @@ const updateSettings = (partial) => {
     loadOverlayPage(overlayWindow);
   }
 
+  if (tickerWindow && !tickerWindow.isDestroyed()) {
+    loadTickerPage(tickerWindow);
+  }
+
   broadcastState();
   return settings;
 };
@@ -208,6 +301,9 @@ app.whenReady().then(() => {
   ensureControlWindow();
   if (settings.overlayVisible) {
     ensureOverlayWindow();
+  }
+  if (settings.tickerVisible) {
+    ensureTickerWindow();
   }
   registerShortcuts();
 });
@@ -255,6 +351,41 @@ ipcMain.handle("overlay:reload", () => {
   return settings;
 });
 
+ipcMain.handle("ticker:show", () => {
+  const window = ensureTickerWindow();
+  settings.tickerVisible = true;
+  saveSettings();
+  applyOverlayFlags();
+  window.showInactive();
+  broadcastState();
+  return settings;
+});
+
+ipcMain.handle("ticker:hide", () => {
+  if (tickerWindow && !tickerWindow.isDestroyed()) {
+    tickerWindow.hide();
+  }
+  settings.tickerVisible = false;
+  saveSettings();
+  broadcastState();
+  return settings;
+});
+
+ipcMain.handle("ticker:reload", () => {
+  const window = ensureTickerWindow();
+  loadTickerPage(window);
+  return settings;
+});
+
+ipcMain.handle("ticker:reset-bounds", () => {
+  settings.tickerBounds = { ...DEFAULT_SETTINGS.tickerBounds };
+  saveSettings();
+  const window = ensureTickerWindow();
+  window.setBounds(settings.tickerBounds);
+  broadcastState();
+  return settings;
+});
+
 ipcMain.handle("overlay:reset-bounds", () => {
   settings.bounds = { ...DEFAULT_SETTINGS.bounds };
   saveSettings();
@@ -274,6 +405,7 @@ ipcMain.handle("overlay:open-controls", () => {
 });
 
 ipcMain.handle("external:open", (_event, url) => shell.openExternal(url));
+
 ipcMain.handle("clipboard:write-text", (_event, value) => {
   clipboard.writeText(value || "");
   return true;

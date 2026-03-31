@@ -68,6 +68,14 @@
                 </div>
               </div>
 
+              <div class="form-row" id="rowSecondInnings">
+                <label class="toggle-row">
+                  <span>2nd Innings (Enable Overs)</span>
+                  <input type="checkbox" id="secondInnings" class="toggle-input" title="Toggle chasing logic for the active team" />
+                  <div class="toggle-track"></div>
+                </label>
+              </div>
+
               <div class="form-row">
                 <label>Audience Access</label>
                 <div class="input-action-group">
@@ -97,6 +105,16 @@
               <button id="hideOverlay" class="glass-btn">Hide</button>
               <button id="reloadOverlay" class="glass-btn">Reload</button>
               <button id="resetBounds" class="glass-btn">Reset</button>
+            </div>
+
+            <div class="control-row">
+              <label>Ticker Overlay</label>
+              <div class="action-grid">
+                <button id="showTicker" class="glass-btn">Show Ticker</button>
+                <button id="hideTicker" class="glass-btn">Hide Ticker</button>
+                <button id="reloadTicker" class="glass-btn">Reload</button>
+                <button id="resetTickerBounds" class="glass-btn">Reset Ticker</button>
+              </div>
             </div>
 
             <button id="togglePredictionPause" class="secondary-btn wide-btn">

@@ -7,7 +7,7 @@ import {
   saveRoomMeta,
   updateActiveSession
 } from "../assets/firebase.js";
-import { getAudienceEntryUrl } from "../assets/shared.js";
+import { getAudienceEntryUrl, escapeHtml } from "../assets/shared.js";
 
 const settingsForm = document.querySelector("#settingsForm");
 const roomIdInput = document.querySelector("#roomId");
@@ -17,6 +17,7 @@ const teamBInput = document.querySelector("#teamB");
 const allowRepredictionInput = document.querySelector("#allowReprediction");
 const disableScoreAInput = document.querySelector("#disableScoreA");
 const disableScoreBInput = document.querySelector("#disableScoreB");
+const secondInningsInput = document.querySelector("#secondInnings");
 const hideJoinInput = document.querySelector("#hideJoin");
 const audienceUrlInput = document.querySelector("#audienceUrl");
 const copyAudienceUrlButton = document.querySelector("#copyAudienceUrl");
@@ -34,6 +35,10 @@ const toggleHideChatButton = document.querySelector("#toggleHideChat");
 const toggleHideJoinButton = document.querySelector("#toggleHideJoin");
 const clearPredictionsButton = document.querySelector("#clearPredictions");
 const clearChatButton = document.querySelector("#clearChat");
+const showTickerButton = document.querySelector("#showTicker");
+const hideTickerButton = document.querySelector("#hideTicker");
+const reloadTickerButton = document.querySelector("#reloadTicker");
+const resetTickerBoundsButton = document.querySelector("#resetTickerBounds");
 
 // Status Dots
 const dotOverlay = document.querySelector("#dotOverlay");
@@ -103,6 +108,7 @@ const getFormMeta = () => {
     allowReprediction: allowRepredictionInput.checked,
     disableScoreA: disableScoreAInput.checked,
     disableScoreB: disableScoreBInput.checked,
+    secondInnings: secondInningsInput.checked,
     predictionsPaused: Boolean(currentMeta.predictionsPaused),
     hideChat: Boolean(currentMeta.hideChat),
     hideJoin: Boolean(currentMeta.hideJoin)
@@ -134,12 +140,20 @@ const subscribeToMeta = (roomId) => {
 
   stopMetaSubscription = onValue(roomRef(roomId, "meta"), (snapshot) => {
     currentMeta = snapshot.val() || {};
+    
+    const teamA = currentMeta.teamA || "";
+    const teamB = currentMeta.teamB || "";
+    
     matchTitleInput.value = currentMeta.matchTitle || "";
-    teamAInput.value = currentMeta.teamA || "";
-    teamBInput.value = currentMeta.teamB || "";
+    teamAInput.value = teamA;
+    teamBInput.value = teamB;
     allowRepredictionInput.checked = Boolean(currentMeta.allowReprediction);
     disableScoreAInput.checked = Boolean(currentMeta.disableScoreA);
     disableScoreBInput.checked = Boolean(currentMeta.disableScoreB);
+    
+    // Update secondInnings toggle
+    secondInningsInput.checked = Boolean(currentMeta.secondInnings);
+
     syncPauseUi();
     syncChatUi();
     syncJoinUi();
@@ -300,6 +314,22 @@ reloadOverlayButton.addEventListener("click", async () => {
 
 resetBoundsButton.addEventListener("click", async () => {
   setStatusText(await window.overlayDesktop.resetBounds());
+});
+
+showTickerButton.addEventListener("click", async () => {
+  setStatusText(await window.overlayDesktop.showTicker());
+});
+
+hideTickerButton.addEventListener("click", async () => {
+  setStatusText(await window.overlayDesktop.hideTicker());
+});
+
+reloadTickerButton.addEventListener("click", async () => {
+  setStatusText(await window.overlayDesktop.reloadTicker());
+});
+
+resetTickerBoundsButton.addEventListener("click", async () => {
+  setStatusText(await window.overlayDesktop.resetTickerBounds());
 });
 
 window.overlayDesktop.onSettingsChanged((settings) => {

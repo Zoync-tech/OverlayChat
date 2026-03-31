@@ -13,7 +13,8 @@ import {
   escapeHtml,
   getRoomId,
   setHidden,
-  sortByTimestampDescending
+  sortByTimestampDescending,
+  applyTeamTheme
 } from "./shared.js";
 
 const params = new URLSearchParams(window.location.search);
@@ -210,14 +211,46 @@ const renderPredictions = (predictions) => {
       const sideClass = isTeamA ? "team-a-highlight" : (isTeamB ? "team-b-highlight" : "");
 
       let displayScore = "";
-      if (prediction.scoreA !== undefined || prediction.scoreB !== undefined) {
-        const sA = prediction.scoreA !== null ? prediction.scoreA : "-";
-        const sB = prediction.scoreB !== null ? prediction.scoreB : "-";
-        displayScore = `
-          <span class="team-a-highlight">${escapeHtml(teamAName)}: ${sA}</span>
-          <span class="score-divider">-</span>
-          <span class="team-b-highlight">${escapeHtml(teamBName)}: ${sB}</span>
-        `;
+      const hasScoreA = prediction.scoreA !== null && prediction.scoreA !== undefined;
+      const hasScoreB = prediction.scoreB !== null && prediction.scoreB !== undefined;
+
+      if (hasScoreA || hasScoreB) {
+        const teamA = (currentMeta.teamA || "Home Team").toString().trim();
+        const teamB = (currentMeta.teamB || "Away Team").toString().trim();
+        const is2ndInnings = Boolean(currentMeta.secondInnings);
+
+        const lowA = teamA.toLowerCase();
+        const lowB = teamB.toLowerCase();
+
+        // Infer chasing team:
+        let chasingTeam = null;
+        if (is2ndInnings) {
+          if (currentMeta.disableScoreA && !currentMeta.disableScoreB) chasingTeam = teamB;
+          else if (currentMeta.disableScoreB && !currentMeta.disableScoreA) chasingTeam = teamA;
+        }
+
+        const lowChaser = (chasingTeam || "").toLowerCase();
+        const predictedWinner = (prediction.predictedWinner || "").toString().trim().toLowerCase();
+        const isChasingWinner = lowChaser && predictedWinner === lowChaser;
+
+        const scores = [];
+        if (hasScoreA) {
+          const sA = prediction.scoreA;
+          const isAChaser = lowChaser === lowA;
+          const isOver = is2ndInnings && isAChaser && isChasingWinner;
+          const suffix = isOver ? " ov" : "";
+          const displayVal = isOver ? (Number(sA) || 0).toFixed(1) : sA;
+          scores.push(`<span class="team-a-highlight">${escapeHtml(teamAName)}: ${displayVal}${suffix}</span>`);
+        }
+        if (hasScoreB) {
+          const sB = prediction.scoreB;
+          const isBChaser = lowChaser === lowB;
+          const isOver = is2ndInnings && isBChaser && isChasingWinner;
+          const suffix = isOver ? " ov" : "";
+          const displayVal = isOver ? (Number(sB) || 0).toFixed(1) : sB;
+          scores.push(`<span class="team-b-highlight">${escapeHtml(teamBName)}: ${displayVal}${suffix}</span>`);
+        }
+        displayScore = scores.join('<span class="score-divider">-</span>');
       } else {
         displayScore = escapeHtml(prediction.predictedScore || "");
       }
@@ -360,8 +393,11 @@ if (!isFirebaseConfigured || !db) {
     currentMeta = meta;
     document.body.classList.toggle("chat-hidden", !!meta.hideChat);
     document.body.classList.toggle("join-hidden", !!meta.hideJoin);
+    applyTeamTheme(meta.teamA, meta.teamB);
     updateGraph();
-    renderPredictions(currentPredictions);
+    if (currentPredictions && currentPredictions.length > 0) {
+      renderPredictions(currentPredictions);
+    }
   });
 
   onValue(query(roomRef(roomId, "chat"), limitToLast(5)), (snapshot) => {

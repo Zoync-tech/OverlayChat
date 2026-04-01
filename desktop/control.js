@@ -231,10 +231,10 @@ const subscribeToMeta = (roomId) => {
 
 const syncWinProbUi = () => {
   if (!currentMeta) return;
-  
+
   const show = Boolean(currentMeta.showWinProb);
   showWinProbToggle.checked = show;
-  
+
   const probA = currentMeta.winProbabilityA !== undefined ? currentMeta.winProbabilityA : 50;
   if (winProbError) winProbError.classList.add("hidden");
   updateWinProbSliderLabel(probA);
@@ -256,7 +256,7 @@ let winProbInterval = null;
 
 const startWinProbAutomation = () => {
   if (winProbInterval) clearInterval(winProbInterval);
-  
+
   winProbInterval = setInterval(async () => {
     if (!autoFetchWinProbToggle.checked || !googleMatchUrlInput.value.trim()) return;
     performWinProbFetch();
@@ -269,16 +269,16 @@ const performWinProbFetch = async () => {
     if (fetchStatus) fetchStatus.textContent = "Status: No URL provided";
     return;
   }
-  
+
   if (fetchStatus) fetchStatus.textContent = "Status: Fetching...";
   if (fetchNowBtn) fetchNowBtn.disabled = true;
 
   try {
     const result = await window.overlayDesktop.fetchWinProbability(url);
-    
+
     if (result && result.probA && result.probB) {
       const valA = parseInt(result.probA);
-      
+
       // Update UI
       if (winProbError) winProbError.classList.add("hidden");
       if (fetchStatus) fetchStatus.textContent = `Status: Success (${result.probA} / ${result.probB})`;
@@ -607,7 +607,7 @@ clearChatButton.addEventListener("click", () => handleChatClear());
 clearReactionsButton.addEventListener("click", () => handleClear("reaction", clearReactionsButton));
 
 const handleChatClear = async () => {
-    handleClear("chat", clearChatButton);
+  handleClear("chat", clearChatButton);
 };
 
 showReactionButton.addEventListener("click", () => window.overlayDesktop.showReaction());
@@ -668,7 +668,7 @@ const updateResolutionVisibility = () => {
   const is2nd = Boolean(currentMeta.secondInnings);
   resolution1st.classList.toggle("hidden", is2nd);
   resolution2nd.classList.toggle("hidden", !is2nd);
-  
+
   if (resSectionTitle) {
     resSectionTitle.textContent = "Match Resolution";
   }
@@ -739,11 +739,11 @@ const calculateInnings1Points = (prediction, actual) => {
   }
 
   const diff = Math.abs(actual - predScore);
-  if (diff === 0) return { points: 100, diff, isExact: true, isNear5: true, isNear10: true, guess: predScore, mode: "Score" };
+  if (diff === 0) return { points: 200, diff, isExact: true, isNear5: true, isNear10: true, guess: predScore, mode: "Score" };
 
-  const base = Math.round(Math.max(0, 40 - (diff * 1.2)));
-  const near5 = diff <= 5 ? 10 : 0;
-  const near10 = diff <= 10 ? 5 : 0;
+  const base = Math.round(Math.max(0, 100 - (diff * 1.2)));
+  const near5 = diff <= 5 ? 20 : 0;
+  const near10 = diff <= 10 ? 10 : 0;
 
   return {
     points: base + near5 + near10,
@@ -785,10 +785,10 @@ const calculateInnings2Points = (prediction, actualWinner, actualResult) => {
     const predBalls = oversToBalls(predVal || 0);
     const diff = Math.abs(actualBalls - predBalls);
 
-    const accuracy = Math.max(0, 40 - (diff * 2));
-    const near3Bonus = (diff <= 3) ? 10 : 0;
-    const rangeBonus = (diff <= 8) ? 5 : 0;
-    const exactBonus = (diff === 0) ? 50 : 0;
+    const accuracy = Math.round(Math.max(0, 120 - (diff * 1.8)));
+    const near3Bonus = (diff <= 3) ? 20 : 0;
+    const rangeBonus = (diff <= 9) ? 10 : 0;
+    const exactBonus = (diff === 0) ? 70 : 0;
 
     points += accuracy + near3Bonus + rangeBonus + exactBonus;
     return { points, diff: ballsToOversDisplay(diff), guess: predVal, isExact: diff === 0, mode: "Overs" };
@@ -798,10 +798,10 @@ const calculateInnings2Points = (prediction, actualWinner, actualResult) => {
     const predScore = Number(predVal || 0);
     const diff = Math.abs(actualScore - predScore);
 
-    const accuracy = Math.round(Math.max(0, 40 - (diff * 1.8)));
-    const rangeBonusTier1 = (diff <= 3) ? 10 : 0;
-    const rangeBonusTier2 = (diff <= 12) ? 5 : 0;
-    const exactBonus = (diff === 0) ? 50 : 0;
+    const accuracy = Math.round(Math.max(0, 120 - (diff * 1.5)));
+    const rangeBonusTier1 = (diff <= 5) ? 20 : 0;
+    const rangeBonusTier2 = (diff <= 12) ? 10 : 0;
+    const exactBonus = (diff === 0) ? 70 : 0;
 
     points += accuracy + rangeBonusTier1 + rangeBonusTier2 + exactBonus;
     return { points, diff: `${diff} runs`, guess: predScore, isExact: diff === 0, mode: "Score" };
@@ -884,7 +884,7 @@ const resolveMatch = async () => {
     // Archive Results for Final Game Standings
     // We only archive locally so it shows in the dashboard
     // Permanent archival happens during "Prep 2nd Innings" or "End Match"
-    
+
     calculatePointsButton.disabled = false;
     calculatePointsButton.textContent = is2nd ? "Resolve 2nd Innings" : "Resolve 1st Innings";
   } catch (error) {
@@ -897,7 +897,7 @@ const resolveMatch = async () => {
 
 const renderDashboard = (results, actual, winnerName = null) => {
   const is2nd = Boolean(currentMeta.secondInnings);
-  
+
   // Format Actual Score label with winner if 2nd innings
   const winDisplay = winnerName ? `${winnerName.toString().toUpperCase()} WIN ` : "";
   resActualScoreLabel.textContent = is2nd ? `${winDisplay}(${actual})` : actual;
@@ -990,10 +990,10 @@ clearPrep2ndButton.addEventListener("click", async () => {
     if (!is2nd) {
       const nextMeta = getFormMeta();
       nextMeta.secondInnings = true;
-      
+
       // Auto-Swap Batting Team: Flip from current batting team to the other
       const currentBattingHome = !currentMeta.disableScoreA;
-      nextMeta.disableScoreA = currentBattingHome; 
+      nextMeta.disableScoreA = currentBattingHome;
       nextMeta.disableScoreB = !currentBattingHome;
 
       await saveRoomMeta(roomId, nextMeta);
@@ -1005,7 +1005,7 @@ clearPrep2ndButton.addEventListener("click", async () => {
     resultsDashboard.classList.add("hidden");
     actualScoreInput.value = "";
     actualResultInput.value = "";
-    
+
     clearPrep2ndButton.disabled = false;
     clearPrep2ndButton.textContent = is2nd ? "Resolve Room" : "Prep 2nd Innings";
     updateResolutionVisibility();
@@ -1041,7 +1041,7 @@ const viewFinalStandings = async () => {
       Object.entries(data).forEach(([cid, p]) => {
         const rawName = (p.name || "Anonymous").toString().trim();
         const key = rawName.toLowerCase();
-        
+
         if (!combinedMap.has(key)) {
           combinedMap.set(key, {
             displayName: rawName,
@@ -1049,7 +1049,7 @@ const viewFinalStandings = async () => {
             p2: { pts: 0, winner: "" }
           });
         }
-        
+
         const rec = combinedMap.get(key);
         if (isInnings1) {
           rec.p1 = { pts: p.points || 0, winner: p.predictedWinner || "" };
@@ -1104,9 +1104,9 @@ const renderOverallDashboard = (results) => {
     if (i === 0) rankBadge = `<span class="rank-pill rank-1">1</span>`;
     else if (i === 1) rankBadge = `<span class="rank-pill rank-2">2</span>`;
     else if (i === 2) rankBadge = `<span class="rank-pill rank-3">3</span>`;
-    
-    const penaltyHtml = r.penalty < 0 
-      ? `<span class="penalty-minus">${r.penalty}</span>` 
+
+    const penaltyHtml = r.penalty < 0
+      ? `<span class="penalty-minus">${r.penalty}</span>`
       : `<span style="color:var(--text-secondary);">0</span>`;
 
     return `
@@ -1163,14 +1163,14 @@ const downloadOverallCSV = () => {
 
 const handleEndMatch = async () => {
   if (!confirm("Are you sure you want to PERMANENTLY END the match and delete all scores and predictions? This cannot be undone.")) return;
-  
+
   const roomId = normalizeRoomId(roomIdInput.value.trim() || currentSettings.roomId);
   try {
     endMatchButton.disabled = true;
     endMatchButton.textContent = "Wiping Data...";
-    
+
     await wipeMatchData(roomId);
-    
+
     overallDashboard.classList.add("hidden");
     alert("Match Data WIPED. The room is now fresh and ready for the next game.");
     location.reload();

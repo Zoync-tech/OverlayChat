@@ -19,9 +19,8 @@ const matchTitleInput = document.querySelector("#matchTitle");
 const teamAInput = document.querySelector("#teamA");
 const teamBInput = document.querySelector("#teamB");
 const allowRepredictionInput = document.querySelector("#allowReprediction");
-const disableScoreAInput = document.querySelector("#disableScoreA");
-const disableScoreBInput = document.querySelector("#disableScoreB");
-const secondInningsInput = document.querySelector("#secondInnings");
+const labelBattingA = document.querySelector("#labelBattingA");
+const labelBattingB = document.querySelector("#labelBattingB");
 const hideJoinInput = document.querySelector("#hideJoin");
 const audienceUrlInput = document.querySelector("#audienceUrl");
 const copyAudienceUrlButton = document.querySelector("#copyAudienceUrl");
@@ -62,12 +61,12 @@ const normalizeRoomId = (value) =>
 
 const setStatusText = (settings) => {
   currentSettings = settings;
-  
+
   // Update Text
   overlayStatus.textContent = settings.overlayVisible ? "Visible" : "Hidden";
   clickThroughStatus.textContent = settings.clickThrough ? "Click-through" : "Interactive";
   opacityValue.textContent = `${Math.round(settings.opacity * 100)}%`;
-  
+
   // Update Dots
   if (dotOverlay) {
     dotOverlay.className = `dot ${settings.overlayVisible ? 'active' : 'inactive'}`;
@@ -87,7 +86,7 @@ const syncPauseUi = () => {
   togglePredictionPauseButton.textContent = paused
     ? "Resume Predictions"
     : "Pause Predictions";
-  
+
   if (dotPredictions) {
     dotPredictions.className = `dot ${paused ? 'inactive' : 'active'}`;
   }
@@ -110,26 +109,29 @@ const syncJoinUi = () => {
 const syncSortUi = () => {
   const sortMode = currentMeta.predictionSort || "newest";
   const isScore = sortMode === "score";
-  
+
   sortStatus.textContent = isScore ? "Score (Asc)" : "Newest First";
   toggleSortModeButton.textContent = isScore
     ? "Sort by Newest"
     : "Sort by Score";
-  
+
   if (dotSort) {
     dotSort.className = `dot ${isScore ? 'warning' : 'active'}`;
   }
 };
 
 const getFormMeta = () => {
+  const battingTeam = document.querySelector('input[name="battingTeam"]:checked')?.value;
+  const innings = document.querySelector('input[name="innings"]:checked')?.value;
+
   return {
     matchTitle: matchTitleInput.value.trim(),
     teamA: teamAInput.value.trim(),
     teamB: teamBInput.value.trim(),
     allowReprediction: allowRepredictionInput.checked,
-    disableScoreA: disableScoreAInput.checked,
-    disableScoreB: disableScoreBInput.checked,
-    secondInnings: secondInningsInput.checked,
+    disableScoreA: battingTeam === "away", // Home is batting -> Away is disabled
+    disableScoreB: battingTeam === "home", // Away is batting -> Home is disabled
+    secondInnings: innings === "2",
     predictionSort: currentMeta.predictionSort || "newest",
     predictionsPaused: Boolean(currentMeta.predictionsPaused),
     hideChat: Boolean(currentMeta.hideChat),
@@ -142,7 +144,7 @@ const subscribeToMeta = (roomId) => {
     stopMetaSubscription();
     stopMetaSubscription = null;
   }
-  
+
   if (heartbeatInterval) {
     clearInterval(heartbeatInterval);
     heartbeatInterval = null;
@@ -162,26 +164,66 @@ const subscribeToMeta = (roomId) => {
 
   stopMetaSubscription = onValue(roomRef(roomId, "meta"), (snapshot) => {
     currentMeta = snapshot.val() || {};
-    
+
     const teamA = currentMeta.teamA || "";
     const teamB = currentMeta.teamB || "";
-    
+
     matchTitleInput.value = currentMeta.matchTitle || "";
     teamAInput.value = teamA;
     teamBInput.value = teamB;
+
+    // Update Toggle Labels
+    if (labelBattingA) labelBattingA.textContent = teamA || "Home Team";
+    if (labelBattingB) labelBattingB.textContent = teamB || "Away Team";
+
     allowRepredictionInput.checked = Boolean(currentMeta.allowReprediction);
-    disableScoreAInput.checked = Boolean(currentMeta.disableScoreA);
-    disableScoreBInput.checked = Boolean(currentMeta.disableScoreB);
-    
-    // Update secondInnings toggle
-    secondInningsInput.checked = Boolean(currentMeta.secondInnings);
+
+    // Sync Batting Team Radio
+    if (!currentMeta.disableScoreA && currentMeta.disableScoreB) {
+      document.getElementById("battingA").checked = true;
+    } else if (!currentMeta.disableScoreB && currentMeta.disableScoreA) {
+      document.getElementById("battingB").checked = true;
+    }
+
+    // Sync Innings Radio
+    if (currentMeta.secondInnings) {
+      document.getElementById("innings2nd").checked = true;
+    } else {
+      document.getElementById("innings1st").checked = true;
+    }
 
     syncPauseUi();
     syncChatUi();
     syncJoinUi();
     syncSortUi();
+    updateResolutionVisibility();
   });
 };
+
+// Add listeners to update labels in real-time
+teamAInput.addEventListener("input", () => {
+  if (labelBattingA) labelBattingA.textContent = teamAInput.value.trim() || "Home Team";
+});
+teamBInput.addEventListener("input", () => {
+  if (labelBattingB) labelBattingB.textContent = teamBInput.value.trim() || "Away Team";
+});
+
+// Update Resolution UI immediately when toggles change
+document.querySelectorAll('input[name="innings"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    currentMeta.secondInnings = (radio.value === "2");
+    updateResolutionVisibility();
+  });
+});
+
+document.querySelectorAll('input[name="battingTeam"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    const val = radio.value;
+    currentMeta.disableScoreA = (val === "away");
+    currentMeta.disableScoreB = (val === "home");
+    updateResolutionVisibility();
+  });
+});
 
 const loadInitialState = async () => {
   const settings = await window.overlayDesktop.getSettings();
@@ -211,7 +253,7 @@ settingsForm.addEventListener("submit", async (event) => {
   const originalText = submitBtn.textContent;
 
   const roomId = normalizeRoomId(roomIdInput.value.trim());
-  
+
   // Visual Feedback
   submitBtn.disabled = true;
   submitBtn.textContent = "Deploying...";
@@ -229,7 +271,7 @@ settingsForm.addEventListener("submit", async (event) => {
     }
 
     await window.overlayDesktop.reloadOverlay();
-    
+
     submitBtn.textContent = "Deployed";
     setTimeout(() => {
       submitBtn.disabled = false;
@@ -415,7 +457,13 @@ clearPredictionsButton.addEventListener("click", () => handleClear("predictions"
 clearChatButton.addEventListener("click", () => handleClear("chat", clearChatButton));
 
 // Match Resolution Logic
+const resolution1st = document.getElementById("resolution1st");
+const resolution2nd = document.getElementById("resolution2nd");
 const actualScoreInput = document.getElementById("actualScore");
+const chaserWonRadios = document.getElementsByName("chaserWon");
+const labelChaserWon = document.getElementById("labelChaserWon");
+const actualResultInput = document.getElementById("actualResult");
+const labelActualResult = document.getElementById("labelActualResult");
 const calculatePointsButton = document.getElementById("calculatePoints");
 const resultsDashboard = document.getElementById("resultsDashboard");
 const resultsBody = document.getElementById("resultsBody");
@@ -426,10 +474,83 @@ const clearPrep2ndButton = document.getElementById("clearAndPrep2nd");
 
 let lastResults = []; // Store for CSV export
 
-const calculateInningsPoints = (prediction, actual) => {
+// Helper for Cricket Overs
+const oversToBalls = (val) => {
+  const parts = val.toString().split(".");
+  const overs = parseInt(parts[0]) || 0;
+  const balls = parts.length > 1 ? parseInt(parts[1]) : 0;
+  return (overs * 6) + balls;
+};
+
+// Helper for Over Number (e.g. 17.2 is in the 18th over)
+const getOverNum = (val) => {
+  const parts = val.toString().split(".");
+  const overs = parseInt(parts[0]) || 0;
+  const balls = parts.length > 1 ? parseInt(parts[1]) : 0;
+  return balls > 0 ? overs + 1 : overs;
+};
+
+// Helper to format balls to Overs (e.g. 19 -> 3.1 ov)
+const ballsToOversDisplay = (balls) => {
+  const overs = Math.floor(balls / 6);
+  const rem = balls % 6;
+  return `${overs}.${rem} ov`;
+};
+
+const updateResolutionVisibility = () => {
+  const is2nd = Boolean(currentMeta.secondInnings);
+  resolution1st.classList.toggle("hidden", is2nd);
+  resolution2nd.classList.toggle("hidden", !is2nd);
+
+  // Strictly disable/enable inputs based on section
+  actualScoreInput.disabled = is2nd;
+  actualResultInput.disabled = !is2nd;
+  chaserWonRadios.forEach(r => r.disabled = !is2nd);
+
+  if (is2nd) {
+    const teamA = (currentMeta.teamA || "Team A").toString().trim();
+    const teamB = (currentMeta.teamB || "Team B").toString().trim();
+
+    // Identify Chasing Team
+    let chasingTeam = teamB; // Default
+    if (currentMeta.disableScoreA && !currentMeta.disableScoreB) {
+      chasingTeam = teamB;
+    } else if (currentMeta.disableScoreB && !currentMeta.disableScoreA) {
+      chasingTeam = teamA;
+    }
+
+    labelChaserWon.textContent = `Did ${chasingTeam} win?`;
+
+    // Sync result label based on current radio selection
+    updateResultLabel();
+
+    // Reset CLEAR button text for 2nd innings
+    clearPrep2ndButton.textContent = "Final Resolve & Clear Room";
+  } else {
+    clearPrep2ndButton.textContent = "Clear All & Prep 2nd Innings";
+  }
+};
+
+const updateResultLabel = () => {
+  const chaserWon = document.querySelector('input[name="chaserWon"]:checked')?.value === "yes";
+
+  if (chaserWon) {
+    labelActualResult.textContent = "Actual Overs (e.g. 15.2)";
+    actualResultInput.placeholder = "e.g. 15.2";
+  } else {
+    labelActualResult.textContent = "Actual Chasing Score";
+    actualResultInput.placeholder = "e.g. 145";
+  }
+};
+
+chaserWonRadios.forEach(radio => {
+  radio.addEventListener("change", updateResultLabel);
+});
+
+const calculateInnings1Points = (prediction, actual) => {
   const teamA = (currentMeta.teamA || "Team A").toLowerCase();
   const teamB = (currentMeta.teamB || "Team B").toLowerCase();
-  
+
   // Decide which score to use based on which one is active
   let predScore = 0;
   if (!currentMeta.disableScoreA && currentMeta.disableScoreB) predScore = Number(prediction.scoreA) || 0;
@@ -443,40 +564,119 @@ const calculateInningsPoints = (prediction, actual) => {
   }
 
   const diff = Math.abs(actual - predScore);
-  if (diff === 0) return { points: 100, diff, isExact: true, isNear5: true, isNear10: true, guess: predScore };
-  
-  const base = Math.max(0, 50 - diff);
+  if (diff === 0) return { points: 100, diff, isExact: true, isNear5: true, isNear10: true, guess: predScore, mode: "Score" };
+
+  const base = Math.round(Math.max(0, 40 - (diff * 1.2)));
   const near5 = diff <= 5 ? 10 : 0;
   const near10 = diff <= 10 ? 5 : 0;
-  
-  return { 
-    points: base + near5 + near10, 
-    diff, 
-    isExact: false, 
-    isNear5: diff <= 5, 
+
+  return {
+    points: base + near5 + near10,
+    diff,
+    isExact: false,
+    isNear5: diff <= 5,
     isNear10: diff <= 10,
-    guess: predScore
+    guess: predScore,
+    mode: "Score"
   };
 };
 
-const resolveMatch = async () => {
-  const actual = parseInt(actualScoreInput.value);
-  if (isNaN(actual) || actual < 1) {
-    alert("Please enter a valid actual score for the 1s innings.");
-    return;
+const calculateInnings2Points = (prediction, actualWinner, actualResult) => {
+  const predWinner = (prediction.predictedWinner || "").toLowerCase();
+
+  // 1. Identify Chasing Team
+  const teamA = (currentMeta.teamA || "Team A").toLowerCase();
+  const teamB = (currentMeta.teamB || "Team B").toLowerCase();
+  let chasingTeam = teamB; // Default
+  if (currentMeta.disableScoreA && !currentMeta.disableScoreB) {
+    chasingTeam = teamB;
+  } else if (currentMeta.disableScoreB && !currentMeta.disableScoreA) {
+    chasingTeam = teamA;
   }
 
+  // 2. Get Predicted Value (always from the chasing team's field in 2nd innings)
+  const predVal = chasingTeam === teamA ? prediction.scoreA : prediction.scoreB;
+
+  if (predWinner !== actualWinner) {
+    return { points: 0, diff: "---", guess: (predVal !== null && predVal !== undefined) ? predVal : "---", isExact: false, mode: "Wrong Winner" };
+  }
+
+  const isChaserWinner = labelActualResult.textContent.includes("Overs");
+  let points = 40; // Base Reward for correct winner
+
+  if (isChaserWinner) {
+    // CHASER WON - Use Overs Comparison
+    const actualBalls = oversToBalls(actualResult);
+    const predBalls = oversToBalls(predVal || 0);
+    const diff = Math.abs(actualBalls - predBalls);
+
+    const accuracy = Math.max(0, 40 - (diff * 2));
+    const near3Bonus = (diff <= 3) ? 10 : 0;
+    const rangeBonus = (diff <= 8) ? 5 : 0;
+    const exactBonus = (diff === 0) ? 50 : 0;
+
+    points += accuracy + near3Bonus + rangeBonus + exactBonus;
+    return { points, diff: ballsToOversDisplay(diff), guess: predVal, isExact: diff === 0, mode: "Overs" };
+  } else {
+    // DEFENDER WON - Use Score Comparison
+    const actualScore = Number(actualResult);
+    const predScore = Number(predVal || 0);
+    const diff = Math.abs(actualScore - predScore);
+
+    const accuracy = Math.round(Math.max(0, 40 - (diff * 1.8)));
+    const rangeBonusTier1 = (diff <= 3) ? 10 : 0;
+    const rangeBonusTier2 = (diff <= 12) ? 5 : 0;
+    const exactBonus = (diff === 0) ? 50 : 0;
+
+    points += accuracy + rangeBonusTier1 + rangeBonusTier2 + exactBonus;
+    return { points, diff: `${diff} runs`, guess: predScore, isExact: diff === 0, mode: "Score" };
+  }
+};
+
+const resolveMatch = async () => {
   if (!isFirebaseConfigured || !db || !currentSettings) return;
+  const is2nd = Boolean(currentMeta.secondInnings);
   const roomId = normalizeRoomId(roomIdInput.value.trim() || currentSettings.roomId);
-  
+
+  let actualVal;
+  let actualWinner;
+
+  if (is2nd) {
+    const chaserWon = document.querySelector('input[name="chaserWon"]:checked')?.value === "yes";
+    const teamA = (currentMeta.teamA || "Team A").toString().toLowerCase();
+    const teamB = (currentMeta.teamB || "Team B").toString().toLowerCase();
+
+    // Better identification of winner
+    let chasingTeam = teamB;
+    let defendingTeam = teamA;
+    if (currentMeta.disableScoreA && !currentMeta.disableScoreB) {
+      chasingTeam = teamB; defendingTeam = teamA;
+    } else if (currentMeta.disableScoreB && !currentMeta.disableScoreA) {
+      chasingTeam = teamA; defendingTeam = teamB;
+    }
+
+    actualWinner = chaserWon ? chasingTeam : defendingTeam;
+    actualVal = actualResultInput.value.trim();
+    if (!actualVal) {
+      alert("Please enter the Actual Result (Overs or Score).");
+      return;
+    }
+  } else {
+    actualVal = parseInt(actualScoreInput.value);
+    if (isNaN(actualVal) || actualVal < 1) {
+      alert("Please enter a valid actual score for the 1st innings.");
+      return;
+    }
+  }
+
   try {
     calculatePointsButton.disabled = true;
     calculatePointsButton.textContent = "Calculating...";
-    
+
     // Fetch all predictions once
     const snapshot = await getOnce(roomRef(roomId, "predictions"));
     const predictions = Object.values(snapshot.val() || {});
-    
+
     if (predictions.length === 0) {
       alert("No predictions found in this room.");
       calculatePointsButton.disabled = false;
@@ -485,18 +685,24 @@ const resolveMatch = async () => {
     }
 
     // Process points
-    const results = predictions.map(p => ({
-      name: p.name || "Anonymous",
-      ...calculateInningsPoints(p, actual)
-    }));
+    const results = predictions.map(p => {
+      const pResult = is2nd
+        ? calculateInnings2Points(p, actualWinner, actualVal)
+        : calculateInnings1Points(p, actualVal);
+
+      return {
+        name: p.name || "Anonymous",
+        ...pResult
+      };
+    });
 
     // Sort Descending
     results.sort((a, b) => b.points - a.points);
     lastResults = results;
 
     // Render Dashboard
-    renderDashboard(results, actual);
-    
+    renderDashboard(results, actualVal, is2nd ? actualWinner : null);
+
     calculatePointsButton.disabled = false;
     calculatePointsButton.textContent = "Resolve & View Rankings";
   } catch (error) {
@@ -507,23 +713,25 @@ const resolveMatch = async () => {
   }
 };
 
-const renderDashboard = (results, actual) => {
-  resActualScoreLabel.textContent = actual;
+const renderDashboard = (results, actual, winnerName = null) => {
+  const is2nd = Boolean(currentMeta.secondInnings);
+  resActualScoreLabel.textContent = is2nd ? `${winnerName.toUpperCase()} WIN (${actual})` : actual;
+
   resultsBody.innerHTML = results.map((r, i) => {
     let rankBadge = `<span class="rank-pill">${i + 1}</span>`;
     if (i === 0) rankBadge = `<span class="rank-pill rank-1">1</span>`;
     else if (i === 1) rankBadge = `<span class="rank-pill rank-2">2</span>`;
     else if (i === 2) rankBadge = `<span class="rank-pill rank-3">3</span>`;
-    
+
     const exactBadge = r.isExact ? `<span class="exact-tag">EXACT!</span>` : "";
-    const colorClass = r.points >= 50 ? "success" : (r.points > 20 ? "" : "danger");
+    const colorClass = r.points >= 50 ? "success" : (r.points > 0 ? "" : "danger");
 
     return `
       <tr>
         <td>${rankBadge}</td>
         <td style="font-weight:700;">${escapeHtml(r.name)}</td>
         <td>${r.guess}</td>
-        <td>${r.diff > 0 ? `-${r.diff}` : "0"}</td>
+        <td>${r.diff}</td>
         <td style="font-weight:800; font-size:16px;">${r.points}</td>
         <td>${exactBadge}</td>
       </tr>
@@ -535,7 +743,7 @@ const renderDashboard = (results, actual) => {
 
 const downloadCSV = () => {
   if (lastResults.length === 0) return;
-  
+
   const headers = ["Rank", "Name", "Guess", "Actual", "Diff", "Points"];
   const rows = lastResults.map((r, i) => [
     i + 1,
@@ -573,13 +781,13 @@ clearPrep2ndButton.addEventListener("click", async () => {
   try {
     clearPrep2ndButton.disabled = true;
     clearPrep2ndButton.textContent = "Clearing...";
-    
+
     await clearRoomNode(roomId, "predictions");
-    
+
     resultsDashboard.classList.add("hidden");
     actualScoreInput.value = "";
     alert("Match predictions cleared. You are ready for the 2nd Innings!");
-    
+
     clearPrep2ndButton.disabled = false;
     clearPrep2ndButton.textContent = "Clear All & Prep 2nd Innings";
   } catch (error) {

@@ -13,3 +13,5 @@ later:
 - timed predictions (powerplay score, 16-20 score, number of wickets in x overs defined by admin as per game)
 - way to add predictions for prev games
 - add google prediction % probability
+
+ 

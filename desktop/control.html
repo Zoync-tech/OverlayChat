@@ -51,29 +51,32 @@
               </div>
 
 
-              <div class="dual-row">
-                <div class="form-row">
-                  <label class="toggle-row">
-                    <span>Disable Home Score</span>
-                    <input type="checkbox" id="disableScoreA" class="toggle-input" title="Disable entries for Home Team" />
-                    <div class="toggle-track"></div>
-                  </label>
-                </div>
-                <div class="form-row">
-                  <label class="toggle-row">
-                    <span>Disable Away Score</span>
-                    <input type="checkbox" id="disableScoreB" class="toggle-input" title="Disable entries for Away Team" />
-                    <div class="toggle-track"></div>
-                  </label>
+              <div class="form-row">
+                <label>Batting Team (Active Predictions)</label>
+                <div class="radio-group">
+                  <div class="radio-option">
+                    <input type="radio" id="battingA" name="battingTeam" value="home" checked />
+                    <label class="radio-label" for="battingA" id="labelBattingA">Home Team</label>
+                  </div>
+                  <div class="radio-option">
+                    <input type="radio" id="battingB" name="battingTeam" value="away" />
+                    <label class="radio-label" for="battingB" id="labelBattingB">Away Team</label>
+                  </div>
                 </div>
               </div>
 
-              <div class="form-row" id="rowSecondInnings">
-                <label class="toggle-row">
-                  <span>2nd Innings (Enable Overs)</span>
-                  <input type="checkbox" id="secondInnings" class="toggle-input" title="Toggle chasing logic for the active team" />
-                  <div class="toggle-track"></div>
-                </label>
+              <div class="form-row">
+                <label>Current Innings</label>
+                <div class="radio-group" id="inningsGroup">
+                  <div class="radio-option">
+                    <input type="radio" id="innings1st" name="innings" value="1" checked />
+                    <label class="radio-label" for="innings1st">1st Innings</label>
+                  </div>
+                  <div class="radio-option">
+                    <input type="radio" id="innings2nd" name="innings" value="2" />
+                    <label class="radio-label" for="innings2nd">2nd Innings</label>
+                  </div>
+                </div>
               </div>
 
               <div class="form-row">
@@ -92,12 +95,35 @@
         <section class="panel-group">
           <h2 class="group-title">Match Resolution</h2>
           <div class="glass-card stack">
-            <div class="form-row">
-              <label for="actualScore">Actual 1st Innings Score</label>
-              <input type="number" id="actualScore" placeholder="e.g. 158" min="1" max="999" />
+            <div id="resolution1st">
+              <div class="form-row">
+                <label for="actualScore">Actual 1st Innings Score</label>
+                <input type="number" id="actualScore" placeholder="e.g. 158" min="1" max="999" />
+              </div>
             </div>
+            
+            <div id="resolution2nd" class="hidden">
+              <div class="form-row">
+                <label id="labelChaserWon" for="chaserWonYes">Did Chasing Team win?</label>
+                <div class="radio-group">
+                  <div class="radio-option">
+                    <input type="radio" id="chaserWonYes" name="chaserWon" value="yes" />
+                    <label class="radio-label" for="chaserWonYes">Yes</label>
+                  </div>
+                  <div class="radio-option">
+                    <input type="radio" id="chaserWonNo" name="chaserWon" value="no" checked />
+                    <label class="radio-label" for="chaserWonNo">No</label>
+                  </div>
+                </div>
+              </div>
+              <div class="form-row">
+                <label id="labelActualResult" for="actualResult">Actual Result (Overs/Score)</label>
+                <input type="number" id="actualResult" placeholder="e.g. 15.2 or 145" step="any" min="0" />
+              </div>
+            </div>
+
             <button id="calculatePoints" class="secondary-btn wide-btn" type="button">Resolve & View Rankings</button>
-            <p class="panel-note">Resolve the 1st innings to calculate points and export to CSV.</p>
+            <p class="panel-note">Resolve the current innings to calculate points and export to CSV.</p>
           </div>
         </section>
 

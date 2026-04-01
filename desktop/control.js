@@ -739,7 +739,7 @@ const calculateInnings1Points = (prediction, actual) => {
   }
 
   const diff = Math.abs(actual - predScore);
-  if (diff === 0) return { points: 200, diff, isExact: true, isNear5: true, isNear10: true, guess: predScore, mode: "Score" };
+  if (diff === 0) return { points: 200, diff, rawDiff: 0, isExact: true, isNear5: true, isNear10: true, guess: predScore, mode: "Score" };
 
   const base = Math.round(Math.max(0, 100 - (diff * 1.2)));
   const near5 = diff <= 5 ? 20 : 0;
@@ -748,6 +748,7 @@ const calculateInnings1Points = (prediction, actual) => {
   return {
     points: base + near5 + near10,
     diff,
+    rawDiff: diff,
     isExact: false,
     isNear5: diff <= 5,
     isNear10: diff <= 10,
@@ -773,7 +774,17 @@ const calculateInnings2Points = (prediction, actualWinner, actualResult) => {
   const predVal = chasingTeam === teamA ? prediction.scoreA : prediction.scoreB;
 
   if (predWinner !== actualWinner) {
-    return { points: 0, diff: "---", guess: (predVal !== null && predVal !== undefined) ? predVal : "---", isExact: false, mode: "Wrong Winner" };
+    // Still compute a numeric tiebreak diff for 0-pt wrong-winner players
+    const isChaserWinner = labelActualResult.textContent.includes("Overs");
+    let wrongDiff;
+    if (isChaserWinner) {
+      const actualBalls = oversToBalls(actualResult);
+      const predBalls = oversToBalls(predVal || 0);
+      wrongDiff = Math.abs(actualBalls - predBalls);
+    } else {
+      wrongDiff = Math.abs(Number(actualResult) - Number(predVal || 0));
+    }
+    return { points: 0, diff: "---", rawDiff: wrongDiff, guess: (predVal !== null && predVal !== undefined) ? predVal : "---", isExact: false, mode: "Wrong Winner" };
   }
 
   const isChaserWinner = labelActualResult.textContent.includes("Overs");
@@ -791,7 +802,7 @@ const calculateInnings2Points = (prediction, actualWinner, actualResult) => {
     const exactBonus = (diff === 0) ? 70 : 0;
 
     points += accuracy + near3Bonus + rangeBonus + exactBonus;
-    return { points, diff: ballsToOversDisplay(diff), guess: predVal, isExact: diff === 0, mode: "Overs" };
+    return { points, diff: ballsToOversDisplay(diff), rawDiff: diff, guess: predVal, isExact: diff === 0, mode: "Overs" };
   } else {
     // DEFENDER WON - Use Score Comparison
     const actualScore = Number(actualResult);
@@ -804,7 +815,7 @@ const calculateInnings2Points = (prediction, actualWinner, actualResult) => {
     const exactBonus = (diff === 0) ? 70 : 0;
 
     points += accuracy + rangeBonusTier1 + rangeBonusTier2 + exactBonus;
-    return { points, diff: `${diff} runs`, guess: predScore, isExact: diff === 0, mode: "Score" };
+    return { points, diff: `${diff} runs`, rawDiff: diff, guess: predScore, isExact: diff === 0, mode: "Score" };
   }
 };
 
@@ -874,8 +885,16 @@ const resolveMatch = async () => {
       };
     });
 
-    // Sort Descending for the dashboard display
-    const sortedResults = [...results].sort((a, b) => b.points - a.points);
+    // Sort Descending; for tied 0-point players, break tie by rawDiff ascending (closest prediction ranks higher)
+    const sortedResults = [...results].sort((a, b) => {
+      if (b.points !== a.points) return b.points - a.points;
+      if (a.points === 0 && b.points === 0) {
+        const aDiff = typeof a.rawDiff === 'number' ? a.rawDiff : Infinity;
+        const bDiff = typeof b.rawDiff === 'number' ? b.rawDiff : Infinity;
+        return aDiff - bDiff;
+      }
+      return 0;
+    });
     lastResults = sortedResults;
 
     // Render Dashboard

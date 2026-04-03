@@ -50,6 +50,9 @@
           <div class="hero-meta">
             <span>Code: <strong id="roomBadge">loading...</strong></span>
             <span id="matchBadge">Waiting for match setup</span>
+            <button id="viewLeaderboard" class="glass-pill-btn">
+              <i class="fa-solid fa-trophy"></i> Leaderboard
+            </button>
           </div>
         </section>
 
@@ -171,6 +174,45 @@
       </div>
       </div>
     </main>
+    
+    <!-- Leaderboard Modal Overlay -->
+    <div id="leaderboardModal" class="dashboard-overlay hidden">
+      <div class="dashboard-container">
+        <header class="dashboard-header">
+          <div class="header-left">
+            <span class="header-label">Hall of Fame</span>
+            <h2>Season Leaderboard</h2>
+          </div>
+          <button class="close-btn" id="closeLeaderboard">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </header>
+
+        <div class="dashboard-content">
+          <div class="leaderboard-tabs">
+            <button class="l-tab active" data-mode="total">Total Points</button>
+            <button class="l-tab" data-mode="ppg">Points Per Match</button>
+          </div>
+          
+          <div class="leaderboard-scroll" id="leaderboardScroll">
+            <table class="leaderboard-table">
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>Player</th>
+                  <th>Games</th>
+                  <th>Total Pts</th>
+                  <th>PPG</th>
+                </tr>
+              </thead>
+              <tbody id="leaderboardList">
+                <!-- Standings go here -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <script type="module" src="./assets/audience.js"></script>
   </body>

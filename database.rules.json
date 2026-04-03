@@ -28,6 +28,10 @@
           ".read": true,
           ".write": true
         },
+        "season_leaderboard": {
+          ".read": true,
+          ".write": true
+        },
         "reaction": {
           ".read": true,
           ".write": true

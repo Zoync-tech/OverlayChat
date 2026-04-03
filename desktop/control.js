@@ -14,7 +14,8 @@ import {
   getInningsHistory,
   archiveToHistory,
   getHistory,
-  wipeMatchData
+  wipeMatchData,
+  saveSeasonLeaderboard
 } from "../assets/firebase.js";
 import { getAudienceEntryUrl, escapeHtml } from "../assets/shared.js";
 
@@ -1166,7 +1167,41 @@ const calculateMatchFinals = (h1, h2) => {
 };
 
 const updateSeasonLeaderboard = async () => {
-  // Now redirected to showSeasonStats() within the modal
+  if (!isFirebaseConfigured || !db || !currentSettings) return;
+  const roomId = normalizeRoomId(roomIdInput.value.trim() || currentSettings.roomId);
+
+  try {
+    const history = await getHistory(roomId);
+    if (!history) return;
+
+    const seasonMap = new Map();
+    Object.values(history).forEach(match => {
+      const results = match.finalStandings || [];
+      results.forEach(r => {
+        const key = r.name.trim().toLowerCase();
+        if (!seasonMap.has(key)) {
+          seasonMap.set(key, { name: r.name, total: 0, matchCount: 0 });
+        }
+        const player = seasonMap.get(key);
+        player.total += (r.total || 0);
+        player.matchCount += 1;
+      });
+    });
+
+    const players = Array.from(seasonMap.values()).map(p => ({
+      ...p,
+      ppg: Number((p.total / (p.matchCount || 1)).toFixed(2))
+    }));
+
+    // Sort by total points for the persistent leaderboard node
+    const sorted = players.sort((a, b) => b.total - a.total);
+
+    // Persist to Firebase
+    await saveSeasonLeaderboard(roomId, sorted);
+    console.log("Season leaderboard persisted successfully.");
+  } catch (error) {
+    console.error("Error updating season leaderboard:", error);
+  }
 };
 
 let seasonSortMode = "total"; // "total" or "ppg"
@@ -1179,9 +1214,11 @@ window.showSeasonStats = async () => {
   document.querySelectorAll(".match-item").forEach(el => el.classList.remove("active"));
   document.getElementById("item-season-stats")?.classList.add("active");
 
-  matchDetail.innerHTML = `<div class="empty-state"><p>Calculating Season Standings...</p></div>`;
+  matchDetail.innerHTML = `<div class="empty-state"><p>Calculating & Syncing Season Standings...</p></div>`;
 
   try {
+    // 1. Sync to Firebase (and Audience)
+    await updateSeasonLeaderboard();
     const history = await getHistory(roomId);
     if (!history || Object.keys(history).length === 0) {
       matchDetail.innerHTML = `
@@ -1477,6 +1514,9 @@ window.saveEditedMatch = async () => {
     } else {
       await archiveToHistory(roomId, oldDateKey, matchSnapshot);
     }
+    
+    // Sync Season Leaderboard
+    await updateSeasonLeaderboard();
 
     // CRITICAL: Await the history refresh so fullHistory is updated before the modal closes
     console.log("Saving complete. refreshing history...");
@@ -1661,7 +1701,7 @@ const downloadOverallCSV = () => {
 
 const handleEndMatch = async () => {
   const roomId = normalizeRoomId(roomIdInput.value.trim() || currentSettings.roomId);
-  if (!confirm("Are you sure you want to end the match? Current standings will be archived and the live room will be cleared.")) return;
+  if (!confirm("Are you sure you want to end the match? Current standings will be archived to history and the live room will be cleared.")) return;
 
   try {
     endMatchButton.disabled = true;
@@ -1687,13 +1727,16 @@ const handleEndMatch = async () => {
       matchResults: {
         actual1st: Number(actualScoreInput.value),
         actual2nd: actualResultInput.value,
-        actualWinner: document.querySelector('input[name="chaserWon"]:checked')?.value === "yes" ? (currentMeta.disableScoreA ? currentMeta.teamA : currentMeta.teamB) : (currentMeta.disableScoreA ? currentMeta.teamB : currentMeta.teamA)
+        actualWinner: document.querySelector('input[name="chaserWon"]:checked')?.value === "yes" ? (currentMeta.disableScoreA ? (currentMeta.teamA || "Team A") : (currentMeta.teamB || "Team B")) : (currentMeta.disableScoreA ? (currentMeta.teamB || "Team B") : (currentMeta.teamA || "Team A"))
       }
     };
 
     await archiveToHistory(roomId, dateKey, archivePayload);
 
-    // 4. Wipe Match Data
+    // 4. Update Season Leaderboard
+    await updateSeasonLeaderboard();
+
+    // 5. Wipe Live Match Data
     await wipeMatchData(roomId);
 
     overallDashboard.classList.add("hidden");
@@ -1703,7 +1746,7 @@ const handleEndMatch = async () => {
     console.error(error);
     alert("Error archiving match data.");
     endMatchButton.disabled = false;
-    endMatchButton.textContent = "End Match & Wipe Data";
+    endMatchButton.textContent = "End Match & Archive Data";
   }
 };
 
@@ -1929,7 +1972,7 @@ const saveManualMatch = async () => {
     
     alert("Manual Match Archived Successfully!");
     manualEntryDashboard.classList.add("hidden");
-    updateSeasonLeaderboard();
+    await updateSeasonLeaderboard();
   } catch (error) {
     console.error("Manual Save Error:", error);
     alert(`Error saving manual match: ${error.message}`);

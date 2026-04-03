@@ -61,6 +61,12 @@ const gifSearchInput = document.querySelector("#gifSearch");
 const gifGrid = document.querySelector("#gifGrid");
 const reactionStatus = document.querySelector("#reactionStatus"); // Fallback for logs
 
+// Leaderboard UI
+const viewLeaderboardBtn = document.querySelector("#viewLeaderboard");
+const closeLeaderboardBtn = document.querySelector("#closeLeaderboard");
+const leaderboardModal = document.querySelector("#leaderboardModal");
+const leaderboardList = document.querySelector("#leaderboardList");
+
 const KLIPY_API_KEY = "rwGYYILu8ZBT9xFPoSG2jUhq65JqUbryTlm4JXs8dWXxmR5GgGbEn5nrgvNxRCud";
 const KLIPY_BASE_URL = `https://api.klipy.com/api/v1`;
 
@@ -340,6 +346,13 @@ if (!roomSelected) {
       applyTeamTheme(meta.teamA, meta.teamB);
       renderWinnerOptions(meta);
       updateInningsLabels();
+    });
+
+    // --- Season Leaderboard Listener ---
+    onValue(roomRef(roomId, "season_leaderboard"), (snapshot) => {
+      const data = snapshot.val() || {};
+      const standings = data.standings || [];
+      renderLeaderboard(standings);
     });
 
     onValue(query(roomRef(roomId, "chat"), limitToLast(20)), (snapshot) => {
@@ -642,6 +655,82 @@ gifSearchInput?.addEventListener("input", (e) => {
 
 gifSearchInput?.addEventListener("keypress", (e) => {
   if (e.key === "Enter") handleGifSearch();
+});
+
+// --- Leaderboard Implementation ---
+let seasonSortMode = "total"; // "total" or "ppg"
+let localStandings = [];
+
+const renderLeaderboard = (standings = []) => {
+  localStandings = standings;
+  if (!standings || standings.length === 0) {
+    leaderboardList.innerHTML = `<tr><td colspan="5" class="empty-state">No rankings available yet.</td></tr>`;
+    return;
+  }
+
+  // Sort based on current mode
+  const sorted = [...standings].sort((a, b) => {
+    if (seasonSortMode === "ppg") return b.ppg - a.ppg;
+    return b.total - a.total;
+  });
+
+  leaderboardList.innerHTML = sorted.map((player, index) => {
+    const rank = index + 1;
+    const isTop3 = rank <= 3;
+    const badgeClass = isTop3 ? `rank-badge top-${rank}` : 'rank-badge';
+    const rowClass = isTop3 ? `top-row rank-${rank}` : '';
+
+    return `
+      <tr class="${rowClass}">
+        <td style="width: 60px;">
+          <div class="${badgeClass}">${rank}</div>
+        </td>
+        <td class="player-info">
+          <span class="player-name">${escapeHtml(player.name)}</span>
+          <span class="ppg-sublabel">${player.ppg || 0} PTS/GAME</span>
+        </td>
+        <td style="text-align: center; width: 80px;">
+          <span>${player.matchCount || 1}</span>
+        </td>
+        <td style="text-align: right; width: 120px;">
+          <span class="pts-val">${player.total || 0}</span>
+        </td>
+        <td style="text-align: right; width: 100px;">
+          <span class="ppg-val">${player.ppg || 0}</span>
+        </td>
+      </tr>
+    `;
+  }).join("");
+};
+
+viewLeaderboardBtn?.addEventListener("click", () => {
+  leaderboardModal.classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+});
+
+closeLeaderboardBtn?.addEventListener("click", () => {
+  leaderboardModal.classList.add("hidden");
+  document.body.style.overflow = "";
+});
+
+// Tab Sorting Listeners
+document.querySelectorAll(".l-tab").forEach(tab => {
+  tab.addEventListener("click", (e) => {
+    const mode = e.target.dataset.mode;
+    if (!mode) return;
+    
+    seasonSortMode = mode;
+    document.querySelectorAll(".l-tab").forEach(t => t.classList.toggle("active", t.dataset.mode === mode));
+    renderLeaderboard(localStandings);
+  });
+});
+
+// Close modal when clicking outside the container
+leaderboardModal?.addEventListener("click", (e) => {
+  if (e.target === leaderboardModal) {
+    leaderboardModal.classList.add("hidden");
+    document.body.style.overflow = "";
+  }
 });
 
 // Initial load

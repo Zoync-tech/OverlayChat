@@ -101,6 +101,13 @@ export const wipeMatchData = async (roomId) => {
   });
 };
 
+export const saveSeasonLeaderboard = async (roomId, data) => {
+  await set(roomRef(roomId, "season_leaderboard"), {
+    standings: data,
+    updatedAt: serverTimestamp()
+  });
+};
+
 export const removePrediction = async (roomId, clientId) => {
   await set(roomRef(roomId, `predictions/${clientId}`), null);
 };

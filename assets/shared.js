@@ -96,16 +96,16 @@ export const setHidden = (element, shouldHide) => {
 };
 
 export const TEAM_COLORS = {
-  MI: "#004BA0",
-  CSK: "#FFFF00",
-  RCB: "#EC1C24",
-  KKR: "#3A225D",
-  SRH: "#FF822A",
-  PBKS: "#D71920",
-  DC: "#004C99",
-  RR: "#EA1A84",
-  GT: "#1B2133",
-  LSG: "#961212"
+  MI: { primary: "#004BA0", secondary: "#D1AB3E" }, // Blue & Gold
+  CSK: { primary: "#FFFF00", secondary: "#0081E5" }, // Yellow & Blue
+  RCB: { primary: "#EC1C24", secondary: "#000000" }, // Red & Black
+  KKR: { primary: "#3A225D", secondary: "#B39959" }, // Purple & Gold
+  SRH: { primary: "#FF822A", secondary: "#000000" }, // Orange & Black
+  PBKS: { primary: "#D71920", secondary: "#D4AF37" }, // Red & Gold
+  DC: { primary: "#1E5FBF", secondary: "#EF1B23" }, // Blue & Red (Lightened DC blue slightly for contrast)
+  RR: { primary: "#EA1A85", secondary: "#004B8C" }, // Pink & Blue
+  GT: { primary: "#0B1350", secondary: "#BC9412" }, // Navy & Gold
+  LSG: { primary: "#0057E2", secondary: "#E10715" }  // Cyan & Red
 };
 
 export const TEAM_LOGOS = {
@@ -141,37 +141,68 @@ const getContrastColor = (hex) => {
   return luminance > 0.6 ? "#000000" : "#ffffff";
 };
 
-export const applyTeamTheme = (teamA, teamB) => {
-  const getTeamCode = (name) => {
-    if (!name) return null;
-    const clean = String(name).toUpperCase().trim();
-    for (const code in TEAM_COLORS) {
-      if (clean === code || clean.startsWith(code + " ") || clean.includes(" " + code)) {
-        return code;
-      }
-    }
-    return null;
-  };
+const muteColor = (hex, amount = 0.25) => {
+  if (!hex || hex.length < 7) return hex;
+  let r = parseInt(hex.slice(1, 3), 16);
+  let g = parseInt(hex.slice(3, 5), 16);
+  let b = parseInt(hex.slice(5, 7), 16);
+  // Blend with neutral dark slate (#1a1a1b) to mute saturation
+  r = Math.floor(r * (1 - amount) + 26 * amount);
+  g = Math.floor(g * (1 - amount) + 26 * amount);
+  b = Math.floor(b * (1 - amount) + 27 * amount);
+  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+};
 
+const getMidColor = (hex1, hex2) => {
+  if (!hex1 || !hex2) return hex1 || hex2;
+  const r1 = parseInt(hex1.slice(1, 3), 16);
+  const g1 = parseInt(hex1.slice(3, 5), 16);
+  const b1 = parseInt(hex1.slice(5, 7), 16);
+  const r2 = parseInt(hex2.slice(1, 3), 16);
+  const g2 = parseInt(hex2.slice(3, 5), 16);
+  const b2 = parseInt(hex2.slice(5, 7), 16);
+  const r = Math.floor((r1 + r2) / 2);
+  const g = Math.floor((g1 + g2) / 2);
+  const b = Math.floor((b1 + b2) / 2);
+  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+};
+
+export const getTeamCode = (name) => {
+  if (!name) return null;
+  const clean = String(name).toUpperCase().trim();
+  for (const code in TEAM_COLORS) {
+    if (clean === code || clean.startsWith(code + " ") || clean.includes(" " + code)) {
+      return code;
+    }
+  }
+  return null;
+};
+
+export const applyTeamTheme = (teamA, teamB) => {
   const codeA = getTeamCode(teamA);
   const codeB = getTeamCode(teamB);
 
-  const colorA = TEAM_COLORS[codeA] || "#0A84FF";
-  const colorB = TEAM_COLORS[codeB] || "#FF453A";
+  const colorsA = TEAM_COLORS[codeA] || { primary: "#0A84FF", secondary: "#0A84FF" };
+  const colorsB = TEAM_COLORS[codeB] || { primary: "#FF453A", secondary: "#FF453A" };
 
-  const textA = getContrastColor(colorA);
-  const textB = getContrastColor(colorB);
+  const pA = muteColor(colorsA.primary);
+  const sA = muteColor(colorsA.secondary);
+  const pB = muteColor(colorsB.primary);
+  const sB = muteColor(colorsB.secondary);
 
+  const midP = getMidColor(pA, pB);
+
+  const textA = getContrastColor(colorsA.primary);
   const root = document.documentElement;
-  root.style.setProperty("--team-a", colorA);
-  root.style.setProperty("--team-b", colorB);
-  root.style.setProperty("--text-a", textA);
-  root.style.setProperty("--text-b", textB);
+  root.style.setProperty("--team-a", pA);
+  root.style.setProperty("--team-a-alt", sA);
+  root.style.setProperty("--team-b", pB);
+  root.style.setProperty("--team-b-alt", sB);
+  root.style.setProperty("--team-a-text", textA);
 
-  // Set a global contrast color based on the "leading" team (usually Home)
   root.style.setProperty("--contrast", textA);
 
-  const grad = `linear-gradient(135deg, ${colorA}ee, ${colorB}ee)`;
+  const grad = `linear-gradient(100deg, ${sA}cc 0%, ${pA}cc 25%, ${midP}cc 50%, ${pB}cc 75%, ${sB}cc 100%)`;
   root.style.setProperty("--team-gradient", grad);
 };
 

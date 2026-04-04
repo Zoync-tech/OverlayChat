@@ -98,10 +98,6 @@
 
 /* Remove backgrounds from team indicators in the overlay */
 .prediction-side {
-  background: transparent !important;
-  border: none !important;
-  color: var(--contrast, #ffffff) !important;
-  padding: 0 !important;
   display: flex !important;
   align-items: center;
   gap: 8px;

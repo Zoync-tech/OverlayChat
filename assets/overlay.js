@@ -315,11 +315,10 @@ const renderPredictions = (predictions) => {
           const isAChaser = lowChaser === lowA;
           const isOver = is2ndInnings && isAChaser && isChasingWinner;
           
-          // Requirement: Hide 1st innings score (non-chaser) when in 2nd innings
           if (!is2ndInnings || isAChaser) {
             const suffix = isOver ? " ov" : "";
             const displayVal = isOver ? (Number(sA) || 0).toFixed(1) : sA;
-            scores.push(`<span class="team-a-highlight">${escapeHtml(teamAName)}: ${displayVal}${suffix}</span>`);
+            scores.push(`<span class="team-a-highlight">${displayVal}${suffix}</span>`);
           }
         }
         if (hasScoreB) {
@@ -327,11 +326,10 @@ const renderPredictions = (predictions) => {
           const isBChaser = lowChaser === lowB;
           const isOver = is2ndInnings && isBChaser && isChasingWinner;
 
-          // Requirement: Hide 1st innings score (non-chaser) when in 2nd innings
           if (!is2ndInnings || isBChaser) {
             const suffix = isOver ? " ov" : "";
             const displayVal = isOver ? (Number(sB) || 0).toFixed(1) : sB;
-            scores.push(`<span class="team-b-highlight">${escapeHtml(teamBName)}: ${displayVal}${suffix}</span>`);
+            scores.push(`<span class="team-b-highlight">${displayVal}${suffix}</span>`);
           }
         }
         displayScore = scores.join('<span class="score-divider">-</span>');
@@ -343,18 +341,13 @@ const renderPredictions = (predictions) => {
       const winnerLogoHtml = winnerLogo ? `<img src="${winnerLogo}" class="team-logo-inline" alt="" />` : "";
 
       return `
-        <article class="prediction-card compact multi-line">
+        <article class="prediction-card compact single-line ${sideClass}">
           ${adminActionMarkup("prediction", prediction.clientId)}
-          <div class="prediction-card-header">
-            <span class="prediction-name">${escapeHtml(prediction.name)}</span>
-            <span class="card-time">${formatRelativeTime(prediction.updatedAt)}</span>
-          </div>
-          <div class="prediction-card-main">
-            <div class="prediction-val">${displayScore}</div>
-            <span class="prediction-side ${sideClass}">
-              ${winnerLogoHtml}
-            </span>
-          </div>
+          <span class="prediction-name">${escapeHtml(prediction.name)}</span>
+          <div class="prediction-val">${displayScore}</div>
+          <span class="prediction-side ${sideClass}">
+            ${winnerLogoHtml}
+          </span>
         </article>
       `;
     })

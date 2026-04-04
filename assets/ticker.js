@@ -1,36 +1,72 @@
 import { db, onValue, roomRef, query, limitToLast } from "./firebase.js";
-import { getRoomId, escapeHtml, applyTeamTheme, stripKlipyUrl } from "./shared.js";
+import { getRoomId, escapeHtml, applyTeamTheme, stripKlipyUrl, getTeamCode } from "./shared.js";
 
 const roomId = getRoomId();
+const tickerStats = document.getElementById("tickerStats");
 const tickerContent = document.getElementById("tickerContent");
 
 let currentMessages = []; // Array of { id, user, text, timestamp }
 let currentPredictions = []; // Array of { id, name, scoreA, scoreB, winner }
 let currentMeta = {};
-let currentPredictionsCount = 0;
 
 // 1 minute expiration (60,000ms)
 const MESSAGE_EXPIRY = 60000;
+
+/**
+ * Calculates current prediction percentages based on team names
+ */
+const calculateStats = () => {
+  const clean = (s) => (s || "").toString().trim().toLowerCase();
+  const teamA = clean(currentMeta.teamA);
+  const teamB = clean(currentMeta.teamB);
+  
+  if (!currentPredictions.length || !teamA) {
+    currentMeta.percentA = 50;
+    currentMeta.percentB = 50;
+    return;
+  }
+
+  const countA = currentPredictions.filter(p => clean(p.winner) === teamA).length;
+  const countB = currentPredictions.filter(p => clean(p.winner) === teamB).length;
+  const total = countA + countB;
+
+  if (total === 0) {
+    currentMeta.percentA = 50;
+    currentMeta.percentB = 50;
+  } else {
+    currentMeta.percentA = Math.round((countA / total) * 100);
+    currentMeta.percentB = 100 - currentMeta.percentA;
+  }
+};
 
 /**
  * Updates the ticker DOM content and calculates scrolling duration
  */
 const updateTickerDOM = () => {
   const now = Date.now();
-  // Filter messages based on time (1 min threshold)
-  const validMessages = currentMessages.filter(msg => (now - msg.timestamp) < MESSAGE_EXPIRY);
+  calculateStats();
 
-  const items = [];
-
-  // 1. Prediction Global Summary
+  // 1. Update Static Section (Match Summary)
   if (currentMeta.teamA && currentMeta.teamB) {
     const pA = currentMeta.percentA !== undefined ? currentMeta.percentA : 50;
     const pB = currentMeta.percentB !== undefined ? currentMeta.percentB : 50;
-    const liveStats = `Predictions: ${currentMeta.teamA} ${pA}% vs ${currentMeta.teamB} ${pB}% (${currentPredictionsCount} votes)`;
+    const statsHtml = `<span>${escapeHtml(currentMeta.teamA)} ${pA}% vs ${pB}% ${escapeHtml(currentMeta.teamB)}</span>`;
+    tickerStats.innerHTML = statsHtml;
+    tickerStats.style.display = "flex";
+  } else {
+    tickerStats.style.display = "none";
+  }
+
+  // 2. Prepare Scrolling Content
+  const items = [];
+  const validMessages = currentMessages.filter(msg => (now - msg.timestamp) < MESSAGE_EXPIRY);
+
+  // Use a generic Match Live indicator on start
+  if (currentPredictions.length === 0 && validMessages.length === 0) {
     items.push(`
-      <span class="ticker-item prediction">
-        <span class="ticker-badge">Match</span>
-        <span>${escapeHtml(liveStats)}</span>
+      <span class="ticker-item meta">
+        <span class="ticker-badge">Live</span>
+        <span>${escapeHtml(currentMeta.matchTitle || "OverlayChat")} is live! Waiting for predictions...</span>
       </span>
     `);
   }
@@ -43,7 +79,6 @@ const updateTickerDOM = () => {
     const lowA = teamA.toLowerCase();
     const lowB = teamB.toLowerCase();
 
-    // Infer chasing team for 2nd innings filtering
     let chasingTeam = null;
     if (is2ndInnings) {
       if (currentMeta.disableScoreA && !currentMeta.disableScoreB) chasingTeam = teamB;
@@ -51,69 +86,35 @@ const updateTickerDOM = () => {
     }
     const lowChaser = (chasingTeam || "").toLowerCase();
     
-    // Sort predictions if requested
     const sortedPredictions = [...currentPredictions].sort((a, b) => {
       if (currentMeta.predictionSort !== "score") return 0;
-      
       const getValue = (p) => {
-        const is2ndInnings = Boolean(currentMeta.secondInnings);
-        const teamA = (currentMeta.teamA || "Home Team").toString().trim();
-        const teamB = (currentMeta.teamB || "Away Team").toString().trim();
-        
-        let chasingTeam = null;
-        if (is2ndInnings) {
-          if (currentMeta.disableScoreA && !currentMeta.disableScoreB) chasingTeam = teamB;
-          else if (currentMeta.disableScoreB && !currentMeta.disableScoreA) chasingTeam = teamA;
-        }
-
         let val = 0;
         if (is2ndInnings && chasingTeam) {
-          // In 2nd innings, use the chasing team's field
           const lowChaser = chasingTeam.toLowerCase();
-          const lowA = teamA.toLowerCase();
-          if (lowChaser === lowA) val = Number(p.scoreA) || 0;
+          if (lowChaser === teamA.toLowerCase()) val = Number(p.scoreA) || 0;
           else val = Number(p.scoreB) || 0;
         } else {
-          // 1st Innings logic
           const hasA = !currentMeta.disableScoreA;
           const hasB = !currentMeta.disableScoreB;
-          
-          if (hasA && !hasB) {
-            val = Number(p.scoreA) || 0;
-          } else if (hasB && !hasA) {
-            val = Number(p.scoreB) || 0;
-          } else {
-            // Both active or both disabled: use predicted winner's score
+          if (hasA && !hasB) val = Number(p.scoreA) || 0;
+          else if (hasB && !hasA) val = Number(p.scoreB) || 0;
+          else {
             const winner = (p.winner || "").toString().trim().toLowerCase();
-            const lowA = teamA.toLowerCase();
-            const lowB = teamB.toLowerCase();
-            
-            if (winner === lowA) val = Number(p.scoreA) || 0;
-            else if (winner === lowB) val = Number(p.scoreB) || 0;
+            if (winner === teamA.toLowerCase()) val = Number(p.scoreA) || 0;
+            else if (winner === teamB.toLowerCase()) val = Number(p.scoreB) || 0;
             else val = Math.max(Number(p.scoreA) || 0, Number(p.scoreB) || 0);
           }
         }
-
         return val === 0 ? Infinity : val;
       };
-      
-      const valA = getValue(a);
-      const valB = getValue(b);
-      return valA - valB;
+      return getValue(a) - getValue(b);
     });
 
     const fanParts = sortedPredictions
       .map((p) => {
-        const predictedWinnerOrig = (p.winner || "Undecided").toString().trim();
-        const predictedWinnerLow = predictedWinnerOrig.toLowerCase();
-        const isChasingWinner = lowChaser && predictedWinnerLow === lowChaser;
-
+        const predictedWinnerOrig = (p.winner || "Guess").toString().trim();
         const detailParts = [];
-        
-        // Helper to check if we should display this score
-        // Requirements: 
-        // 1. Skip non-chaser predictions in 2nd innings
-        // 2. Hide 0 or 0.0 scores/overs
         const shouldShow = (score, isTeamChaser) => {
           const num = Number(score) || 0;
           if (num <= 0) return false;
@@ -123,38 +124,38 @@ const updateTickerDOM = () => {
 
         if (!currentMeta.disableScoreA && shouldShow(p.scoreA, lowChaser === lowA)) {
           const isAChaser = lowChaser === lowA;
-          const isOver = is2ndInnings && isAChaser && isChasingWinner;
+          const isOver = is2ndInnings && isAChaser && predictedWinnerOrig.toLowerCase() === lowA;
           const suffix = isOver ? " ov" : "";
           const displayVal = isOver ? (Number(p.scoreA) || 0).toFixed(1) : p.scoreA;
           detailParts.push(`${displayVal}${suffix}`);
         }
         if (!currentMeta.disableScoreB && shouldShow(p.scoreB, lowChaser === lowB)) {
           const isBChaser = lowChaser === lowB;
-          const isOver = is2ndInnings && isBChaser && isChasingWinner;
+          const isOver = is2ndInnings && isBChaser && predictedWinnerOrig.toLowerCase() === lowB;
           const suffix = isOver ? " ov" : "";
           const displayVal = isOver ? (Number(p.scoreB) || 0).toFixed(1) : p.scoreB;
           detailParts.push(`${displayVal}${suffix}`);
         }
 
         if (detailParts.length === 0) return null;
-        
         return `${p.name} (${predictedWinnerOrig}): ${detailParts.join(" - ")}`;
       })
       .filter(Boolean);
 
-    items.push(`
-      <span class="ticker-item fan-prediction">
-        <span class="ticker-badge">Fan Guesses</span>
-        <span>${escapeHtml(fanParts.join(' | '))}</span>
-      </span>
-    `);
+    if (fanParts.length > 0) {
+      items.push(`
+        <span class="ticker-item fan-prediction">
+          <span class="ticker-badge">Fan Guesses</span>
+          <span>${escapeHtml(fanParts.join(' | '))}</span>
+        </span>
+      `);
+    }
   }
 
-  // 2. Recent Messages (Recent 1 min)
+  // 2. Recent Messages
   const chatMessages = validMessages.filter(msg => {
     const stripped = stripKlipyUrl(msg.text);
-    const isKlipyOnly = msg.text && !stripped && (msg.text.includes("klipy.co") || msg.text.includes("klipy.com"));
-    return !isKlipyOnly;
+    return !(msg.text && !stripped && (msg.text.includes("klipy.co") || msg.text.includes("klipy.com")));
   });
 
   chatMessages.forEach(msg => {
@@ -162,45 +163,27 @@ const updateTickerDOM = () => {
     if (msg.mediaUrl) {
       mediaHtml = `<img src="${escapeHtml(msg.mediaUrl)}" style="height:24px; vertical-align:middle; border-radius:4px; margin-left: 6px;" alt="" />`;
     }
-    
-    const strippedText = stripKlipyUrl(msg.text);
-
     items.push(`
       <span class="ticker-item message">
         <span class="ticker-badge">Chat</span>
         <strong>${escapeHtml(msg.user)}:</strong>
-        <span>${escapeHtml(strippedText)}${mediaHtml}</span>
+        <span>${escapeHtml(stripKlipyUrl(msg.text))}${mediaHtml}</span>
       </span>
     `);
   });
 
-  // Fallback if empty
-  if (items.length === 0) {
-    items.push(`
-      <span class="ticker-item meta">
-        <span class="ticker-badge">Live</span>
-        <span>${currentMeta.matchTitle || "OverlayChat"} is live! Waiting for predictions/messages...</span>
-      </span>
-    `);
-  }
+  // Inject Scrolling HTML
+  tickerContent.innerHTML = items.join('<span class="ticker-sep">•</span>');
 
-  // Inject content
-  const htmlContent = items.join('<span class="ticker-sep">•</span>');
-  
-  // To make it infinite/smooth, we can duplicate the items if it's too short
-  // but for now, we'll just set it.
-  tickerContent.innerHTML = htmlContent;
-
-  // Calculate dynamic duration: longer text = slower scroll to keep speed readable
+  // Dynamic Scroll Duration
   const textLength = tickerContent.innerText.length;
-  const speedFactor = 7; // Lower is slower (chars per second)
+  const speedFactor = 7;
   const duration = Math.max(25, textLength / speedFactor);
   tickerContent.style.animationDuration = `${duration}s`;
 };
 
 // --- DATA CONNECTORS ---
 
-// 1. Meta (Room Settings)
 onValue(roomRef(roomId, "meta"), (snapshot) => {
   currentMeta = snapshot.val() || {};
   if (currentMeta.teamA && currentMeta.teamB) {
@@ -209,7 +192,6 @@ onValue(roomRef(roomId, "meta"), (snapshot) => {
   updateTickerDOM();
 });
 
-// 2. Predictions (Stats)
 onValue(roomRef(roomId, "predictions"), (snapshot) => {
   const data = snapshot.val() || {};
   currentPredictions = Object.entries(data).map(([id, p]) => ({
@@ -219,34 +201,22 @@ onValue(roomRef(roomId, "predictions"), (snapshot) => {
     scoreB: p.scoreB || 0,
     winner: p.predictedWinner
   }));
-  currentPredictionsCount = currentPredictions.length;
-  
-  if (currentPredictionsCount > 0 && currentMeta.teamA) {
-    const countA = currentPredictions.filter(p => p.winner === currentMeta.teamA).length;
-    currentMeta.percentA = Math.round((countA / currentPredictionsCount) * 100);
-    currentMeta.percentB = 100 - currentMeta.percentA;
-  }
   updateTickerDOM();
 });
 
-// 3. Chat (Latest Messages)
-const chatQuery = query(roomRef(roomId, "chat"), limitToLast(15));
+const chatQuery = query(roomRef(roomId, "chat"), limitToLast(10));
 onValue(chatQuery, (snapshot) => {
   const data = snapshot.val() || {};
-  const now = Date.now();
   currentMessages = Object.entries(data)
     .map(([id, msg]) => ({
       id,
       user: msg.name || "Guest",
       text: msg.message,
       mediaUrl: msg.mediaUrl,
-      timestamp: msg.createdAt || now
+      timestamp: msg.createdAt || Date.now()
     }))
-    .sort((a, b) => b.timestamp - a.timestamp); // Keep order consistent
-  
+    .sort((a, b) => b.timestamp - a.timestamp);
   updateTickerDOM();
 });
 
-// 4. Maintenance (Pruning)
-// Refresh every 10 seconds to remove expired messages even if no activity occurs
 setInterval(updateTickerDOM, 10000);

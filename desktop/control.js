@@ -1867,12 +1867,18 @@ const addManualRow = () => {
     <td><input type="text" class="m-name" placeholder="Name" /></td>
     <td><input type="number" class="m-p1-guess" placeholder="Guess" /></td>
     <td>
-      <select class="m-winner">
+      <select class="m-winner-1">
         <option value="a">${escapeHtml(teamA)}</option>
         <option value="b">${escapeHtml(teamB)}</option>
       </select>
     </td>
     <td><input type="text" class="m-p2-guess" placeholder="Score/Ov" /></td>
+    <td>
+      <select class="m-winner-2">
+        <option value="a">${escapeHtml(teamA)}</option>
+        <option value="b">${escapeHtml(teamB)}</option>
+      </select>
+    </td>
     <td class="m-points-calc" style="color:var(--text-muted);">--</td>
     <td><button class="remove-row-btn">&times;</button></td>
   `;
@@ -1934,22 +1940,24 @@ const saveManualMatch = async () => {
     rows.forEach((row, i) => {
       const name = row.querySelector(".m-name").value.trim() || `Player ${i+1}`;
       const p1Guess = Number(row.querySelector(".m-p1-guess").value);
-      const winChoice = row.querySelector(".m-winner").value;
+      const winChoice1 = row.querySelector(".m-winner-1").value;
       const p2Guess = row.querySelector(".m-p2-guess").value.trim();
+      const winChoice2 = row.querySelector(".m-winner-2").value;
       
-      const predWinner = winChoice === "a" ? teamA : teamB;
+      const predWinner1 = winChoice1 === "a" ? teamA : teamB;
+      const predWinner2 = winChoice2 === "a" ? teamA : teamB;
       const isOversMatch = actual2nd.includes(".");
 
       // Score Innings 1
-      const p1Pred = { scoreA: p1Guess, predictedWinner: predWinner };
+      const p1Pred = { scoreA: p1Guess, predictedWinner: predWinner1 };
       const p1Stats = calculateInnings1Points(p1Pred, actual1st, manualMeta);
-      innings1[name] = { name, ...p1Stats, points: p1Stats.points, guess: p1Guess, predictedWinner: predWinner };
+      innings1[name] = { name, ...p1Stats, points: p1Stats.points, guess: p1Guess, predictedWinner: predWinner1 };
 
       // Score Innings 2
       // We pass both scoreA and scoreB to be safe, calculation logic will pick correct one
-      const p2Pred = { scoreA: p2Guess, scoreB: p2Guess, predictedWinner: predWinner };
+      const p2Pred = { scoreA: p2Guess, scoreB: p2Guess, predictedWinner: predWinner2 };
       const p2Stats = calculateInnings2Points(p2Pred, actualWinner, actual2nd, manualMeta2nd, isOversMatch);
-      innings2[name] = { name, ...p2Stats, points: p2Stats.points, guess: p2Guess, predictedWinner: predWinner };
+      innings2[name] = { name, ...p2Stats, points: p2Stats.points, guess: p2Guess, predictedWinner: predWinner2 };
     });
 
     const finalStandings = calculateMatchFinals(innings1, innings2);
@@ -2004,10 +2012,15 @@ const updateManualTeamLabels = () => {
 
   // 2. Update existing rows
   document.querySelectorAll(".manual-player-row").forEach(row => {
-    const select = row.querySelector(".m-winner");
-    if (select) {
-      select.options[0].text = teamA;
-      select.options[1].text = teamB;
+    const select1 = row.querySelector(".m-winner-1");
+    if (select1) {
+      select1.options[0].text = teamA;
+      select1.options[1].text = teamB;
+    }
+    const select2 = row.querySelector(".m-winner-2");
+    if (select2) {
+      select2.options[0].text = teamA;
+      select2.options[1].text = teamB;
     }
   });
 };

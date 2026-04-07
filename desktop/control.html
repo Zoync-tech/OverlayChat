@@ -29,6 +29,9 @@
         <section class="panel-group">
           <h2 class="group-title">Match Configuration</h2>
           <div class="glass-card">
+            <div style="display:flex; justify-content:flex-end; margin-bottom: 12px;">
+              <button id="loadTodayMatch" class="action-btn pill small" type="button">🤖 Load Today's Match</button>
+            </div>
             <form id="settingsForm" class="stack">
               <div class="form-row">
                 <label for="roomId">Room Identity</label>
@@ -55,6 +58,14 @@
                 <label class="toggle-row">
                   <span>Allow re-prediction</span>
                   <input type="checkbox" id="allowReprediction" class="toggle-input" />
+                  <div class="toggle-track"></div>
+                </label>
+              </div>
+
+              <div class="form-row">
+                <label class="toggle-row" title="When ON, all cloud automated polling and resolving will stop for this room, giving you full manual control.">
+                  <span style="color: var(--accent);">Cloud Bot Override (Pause Automation)</span>
+                  <input type="checkbox" id="automationPaused" class="toggle-input" />
                   <div class="toggle-track"></div>
                 </label>
               </div>

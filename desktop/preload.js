@@ -28,5 +28,6 @@ contextBridge.exposeInMainWorld("overlayDesktop", {
   clearNode: (roomId, node) => ipcRenderer.invoke("room:clear-node", roomId, node),
   fetchWinProbability: (url) => ipcRenderer.invoke("google:fetch-win-prob", url),
   viewScraperDebug: () => ipcRenderer.invoke("scraper:view-debug"),
-  openScraperSolver: (url) => ipcRenderer.invoke("scraper:open-solver", url)
+  openScraperSolver: (url) => ipcRenderer.invoke("scraper:open-solver", url),
+  getScheduleCsv: () => ipcRenderer.invoke("csv:get-schedule")
 });

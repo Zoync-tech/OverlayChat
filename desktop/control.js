@@ -209,7 +209,8 @@ const getFormMeta = () => {
     predictionSort: currentMeta.predictionSort || "newest",
     predictionsPaused: Boolean(currentMeta.predictionsPaused),
     hideChat: Boolean(currentMeta.hideChat),
-    hideJoin: Boolean(currentMeta.hideJoin)
+    hideJoin: Boolean(currentMeta.hideJoin),
+    automationPaused: document.getElementById("automationPaused")?.checked || false
   };
 };
 
@@ -251,6 +252,11 @@ const subscribeToMeta = (roomId) => {
     if (labelBattingB) labelBattingB.textContent = teamB || "Away Team";
 
     allowRepredictionInput.checked = Boolean(currentMeta.allowReprediction);
+    
+    const automationPausedInput = document.getElementById("automationPaused");
+    if (automationPausedInput) {
+      automationPausedInput.checked = Boolean(currentMeta.automationPaused);
+    }
 
     // Sync Batting Team Radio
     if (!currentMeta.disableScoreA && currentMeta.disableScoreB) {
@@ -1619,24 +1625,37 @@ const viewFinalStandings = async () => {
     viewFinalStandingsButton.textContent = "Loading...";
 
     const history = await getInningsHistory(roomId);
-    const overall = calculateMatchFinals(history["1st"] || {}, history["2nd"] || {});
+    const h1 = history["1st"] || {};
+    const h2 = history["2nd"] || {};
+    
+    if (Object.keys(h1).length === 0 && Object.keys(h2).length === 0) {
+      alert("No innings data found yet. Resolve at least the 1st innings first.");
+      viewFinalStandingsButton.disabled = false;
+      viewFinalStandingsButton.textContent = "View Final Game Standings";
+      return;
+    }
+    
+    const has2nd = Object.keys(h2).length > 0;
+    const overall = calculateMatchFinals(h1, h2);
 
     overall.sort((a, b) => b.total - a.total);
     lastOverallResults = overall;
 
-    renderOverallDashboard(overall);
+    renderOverallDashboard(overall, has2nd);
     viewFinalStandingsButton.disabled = false;
     viewFinalStandingsButton.textContent = "View Final Game Standings";
   } catch (error) {
     console.error(error);
-    alert("Error fetching match standings. Have you resolved both innings?");
+    alert("Error fetching match standings.");
     viewFinalStandingsButton.disabled = false;
     viewFinalStandingsButton.textContent = "View Final Game Standings";
   }
 };
 
-const renderOverallDashboard = (results) => {
-  overallMatchTitle.textContent = matchTitleInput.value || "T20 Match Series";
+const renderOverallDashboard = (results, has2nd = true) => {
+  const titleText = matchTitleInput.value || "T20 Match Series";
+  const statusLabel = has2nd ? "" : " (1st Innings Only)";
+  overallMatchTitle.textContent = titleText + statusLabel;
   overallBody.innerHTML = results.map((r, i) => {
     let rankBadge = `<span class="rank-pill">${i + 1}</span>`;
     if (i === 0) rankBadge = `<span class="rank-pill rank-1">1</span>`;
@@ -1647,6 +1666,14 @@ const renderOverallDashboard = (results) => {
       ? `<span class="penalty-minus">${r.penalty}</span>`
       : `<span style="color:var(--text-secondary);">0</span>`;
 
+    const inn2Html = has2nd
+      ? `<td>
+          <div class="summary-item"><label>Winner: ${r.p2Winner || '---'}</label><span>${r.p2Score} pts</span></div>
+        </td>
+        <td>${penaltyHtml}</td>`
+      : `<td style="color:var(--text-secondary); font-style:italic;">Pending</td>
+        <td style="color:var(--text-secondary);">---</td>`;
+
     return `
       <tr>
         <td>${rankBadge}</td>
@@ -1654,10 +1681,7 @@ const renderOverallDashboard = (results) => {
         <td>
           <div class="summary-item"><label>Winner: ${r.p1Winner || '---'}</label><span>${r.p1Score} pts</span></div>
         </td>
-        <td>
-          <div class="summary-item"><label>Winner: ${r.p2Winner || '---'}</label><span>${r.p2Score} pts</span></div>
-        </td>
-        <td>${penaltyHtml}</td>
+        ${inn2Html}
         <td style="font-weight:800; font-size:18px;">${r.total}</td>
       </tr>
     `;
@@ -2086,3 +2110,66 @@ window.renamePlayer = async (oldName, newName) => {
     alert(`Migration error: ${err.message}`);
   }
 };
+
+const loadTodayMatchBtn = document.querySelector("#loadTodayMatch");
+if (loadTodayMatchBtn) {
+  loadTodayMatchBtn.addEventListener("click", async () => {
+    const csvData = await window.overlayDesktop.getScheduleCsv();
+    if (!csvData) {
+      alert("Could not load schedule CSV file.");
+      return;
+    }
+    
+    // Parse CSV
+    const lines = csvData.split('\n').map(l => l.trim()).filter(Boolean);
+    
+    // Get today's local date in DD-MM-YYYY format
+    const now = new Date();
+    const dd = String(now.getDate()).padStart(2, '0');
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const yyyy = now.getFullYear();
+    const todayStr = `${dd}-${mm}-${yyyy}`;
+    
+    // Find today's matches
+    const todaysMatches = lines.slice(1).map(line => {
+      const parts = line.split(',');
+      if (parts.length >= 6) {
+        return {
+          matchNo: parts[0],
+          date: parts[1],
+          time: parts[2],
+          home: parts[3],
+          away: parts[4],
+          titleStr: parts[5].trim()
+        };
+      }
+      return null;
+    }).filter(m => m && m.date === todayStr);
+    
+    if (todaysMatches.length === 0) {
+      alert(`No matches found in the schedule for today (${todayStr}).`);
+      return;
+    }
+    
+    // Just pick the first match (for double headers, user can change manually if needed)
+    const match = todaysMatches[0];
+    
+    // Populate UI
+    roomIdInput.value = "ipl";
+    matchTitleInput.value = match.titleStr;
+    teamAInput.value = match.home;
+    teamBInput.value = match.away;
+    
+    // Set Batting Team default to Home
+    document.querySelector("#battingA").checked = true;
+    document.querySelector("#battingB").checked = false;
+    labelBattingA.textContent = match.home;
+    labelBattingB.textContent = match.away;
+    
+    // Pre-select 1st Innings
+    document.querySelector("#innings1st").checked = true;
+    
+    alert(`Loaded Match #${match.matchNo} (${match.home} vs ${match.away}). Preview looks good? Click "Deploy Changes" below.`);
+    settingsForm.querySelector("button[type='submit']").focus();
+  });
+}

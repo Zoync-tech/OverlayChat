@@ -706,3 +706,11 @@ ipcMain.handle("scraper:open-solver", (_event, url) => {
 
   return true;
 });
+
+ipcMain.handle("csv:get-schedule", () => {
+  try {
+    return fs.readFileSync(path.join(__dirname, "..", "schedule_2026_ipl.csv"), "utf8");
+  } catch (err) {
+    return null;
+  }
+});

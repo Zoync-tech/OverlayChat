@@ -5,7 +5,7 @@ const { version: APP_VERSION } = require("../package.json");
 
 const DEFAULT_SETTINGS = {
   appVersion: APP_VERSION,
-  roomId: "ipl-main",
+  roomId: "ipl",
   overlayBaseUrl: "https://overlaychat-6f3c1.web.app/o",
   clickThrough: false,
   overlayVisible: true,

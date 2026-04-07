@@ -1,6 +1,6 @@
 {
   "name": "overlaychat-desktop",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Windows overlay app for OverlayChat",
   "author": "OverlayChat",
   "main": "desktop/main.js",

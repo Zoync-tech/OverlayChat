@@ -1,4 +1,4 @@
-export const DEFAULT_ROOM = "ipl-main";
+export const DEFAULT_ROOM = "ipl";
 export const HOSTED_AUDIENCE_ORIGIN = "https://vrccim.com";
 
 export const getRoomId = () => {

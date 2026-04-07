@@ -118,7 +118,7 @@ let stopMetaSubscription = null;
 let heartbeatInterval = null;
 
 const normalizeRoomId = (value) =>
-  value.toLowerCase().replace(/[^a-z0-9-_]/g, "").slice(0, 40) || "ipl-main";
+  value.toLowerCase().replace(/[^a-z0-9-_]/g, "").slice(0, 40) || "ipl";
 
 const setStatusText = (settings) => {
   currentSettings = settings;

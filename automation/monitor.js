@@ -5,6 +5,17 @@ const fs = require("fs");
 const path = require("path");
 const { calculateInnings1Points, calculateInnings2Points, calculateMatchFinals } = require("./scoring.js");
 
+// --- FORCE REAL-TIME LOG OUTPUT (CI/GitHub Actions) ---
+// console.log in non-TTY environments can buffer output. Using process.stdout.write
+// ensures each line is flushed immediately so GitHub Actions shows logs in real-time.
+const util = require("util");
+const _origLog = console.log;
+const _origErr = console.error;
+const _origWarn = console.warn;
+console.log = (...args) => { process.stdout.write(util.format(...args) + "\n"); };
+console.error = (...args) => { process.stderr.write(util.format(...args) + "\n"); };
+console.warn = (...args) => { process.stderr.write(util.format(...args) + "\n"); };
+
 // --- API CONFIG ---
 const API_KEYS = [
   process.env.CRICKET_API_KEY,
@@ -210,6 +221,55 @@ const runMonitor = async () => {
   let hasSleptInnings1 = false;
   let hasSleptInnings2 = false;
 
+  // --- STATE RECOVERY (Resume Support) ---
+  // When restarting mid-match (e.g. pushing code fixes), recover state from
+  // Firebase so we don't re-trigger toss setup, data wipes, or 60-min sleeps.
+  console.log("--- CHECKING FOR RESUMABLE STATE ---");
+  const recMeta = (await db.ref(`rooms/${ROOM}/meta`).once("value")).val() || {};
+
+  if (recMeta.matchTitle && recMeta.matchTitle === targetMatch.titleStr) {
+    console.log(`[Resume] Firebase already has match "${recMeta.matchTitle}" initialized. Recovering state...`);
+    isTossConfirmed = true;
+    meta = recMeta;
+
+    const inn1Snap = await db.ref(`rooms/${ROOM}/innings_history/1st`).once("value");
+    if (inn1Snap.val()) {
+      console.log("[Resume] 1st Innings history found in Firebase. Marking as resolved.");
+      firstInningsResolved = true;
+    }
+
+    // Probe current API score to calibrate lock & sleep flags
+    try {
+      const probe = await fetchApi(`https://api.cricapi.com/v1/currentMatches?offset=0`);
+      const mLive = probe.data && probe.data.find(m => m.id === matchId);
+      if (mLive) {
+        if (mLive.teamInfo) liveTeamInfo = mLive.teamInfo;
+
+        if (mLive.score && mLive.score.length > 0) {
+          const s1 = mLive.score[0];
+          const s2 = mLive.score[1];
+
+          if (!firstInningsResolved && s1 && s1.o >= 3.0) {
+            isFirstInningsLocked = true;
+            hasSleptInnings1 = true;
+            console.log(`[Resume] 1st Innings at ${s1.o} ov — prediction lock & sleep flags set.`);
+          }
+          if (firstInningsResolved && s2 && s2.o >= 3.0) {
+            isSecondInningsLocked = true;
+            hasSleptInnings2 = true;
+            console.log(`[Resume] 2nd Innings at ${s2.o} ov — prediction lock & sleep flags set.`);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(`[Resume] Score probe failed: ${err.message}. Will calibrate on first poll.`);
+    }
+
+    console.log("[Resume] State recovery complete. Entering monitor loop.");
+  } else {
+    console.log("[Fresh Start] No existing match state found. Starting from scratch.");
+  }
+
   while (true) {
     // Re-check manual override
     metaSnap = await db.ref(`rooms/${ROOM}/meta`).once("value");
@@ -229,6 +289,9 @@ const runMonitor = async () => {
         const found = list.data && list.data.find(m => m.id === matchId);
         if (!found) {
            console.log("Match not found in currentMatches list. Falling back to match_info...");
+           info = await fetchApi(`https://api.cricapi.com/v1/match_info?id=${matchId}`);
+        } else if (!found.score || found.score.length === 0) {
+           console.log("[API Flaky] Match found but score data missing. Falling back to match_info...");
            info = await fetchApi(`https://api.cricapi.com/v1/match_info?id=${matchId}`);
         } else {
            // Standardize structure to match what we expect from match_info

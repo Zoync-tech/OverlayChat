@@ -62,7 +62,13 @@ const fetchApi = async (url) => {
     return response.data;
   } catch (err) {
     const isRateLimit = err.response?.status === 429 || (err.message && err.message.toLowerCase().includes("limit"));
-    if (isRateLimit && rotateKey()) return fetchApi(url);
+    if (isRateLimit && rotateKey()) {
+      console.warn(`[Rate Limit] Primary API key exhausted! Switching to backup key and retrying...`);
+      return fetchApi(url);
+    }
+    if (isRateLimit) {
+      console.error(`[Rate Limit] ALL API keys exhausted! Script will retry after the next sleep.`);
+    }
     throw err;
   }
 };
@@ -411,8 +417,9 @@ const runMonitor = async () => {
       await sleep(delay);
 
     } catch (err) {
-      console.error("Monitor Loop API Error: ", err.message);
-      await sleep(5 * 60 * 1000); // Standard retry delay on error
+      const statusCode = err.response?.status ? ` (HTTP ${err.response.status})` : "";
+      console.error(`[Monitor Error] API call failed${statusCode}: ${err.message}. Retrying in 5 mins.`);
+      await sleep(5 * 60 * 1000);
     }
   }
 };

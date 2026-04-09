@@ -911,6 +911,11 @@ const renderMatchDetails = (matchId) => {
         p2Score = "-";
       }
 
+      let penalty = 0;
+      if (p1Winner && p2Winner && p1Winner.toLowerCase() !== p2Winner.toLowerCase()) {
+        penalty = -20;
+      }
+
       return {
         name,
         p1Winner,
@@ -919,7 +924,10 @@ const renderMatchDetails = (matchId) => {
         p2Winner,
         p2Guess,
         p2Score,
-        total: total || (p1Score === "Live" || p2Score === "Live" ? "Live" : 0)
+        penalty,
+        total: (typeof p1Score === "number" || typeof p2Score === "number") 
+          ? Math.max(0, (Number(p1Score) || 0) + (Number(p2Score) || 0) + penalty)
+          : (p1Score === "Live" || p2Score === "Live" ? "Live" : 0)
       };
     });
     

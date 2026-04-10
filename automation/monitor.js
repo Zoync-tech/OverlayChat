@@ -160,11 +160,32 @@ const scrapeCricbuzzMatch = async (teamA, teamB, matchPath = null) => {
     // 6. Extract Scores
     const scoreList = [];
     
+    // Strategy D: JSON State Extraction (Highest Reliability)
+    // We look for score/wickets/overs patterns in the JSON state (often escaped as \")
+    const teamScorePatterns = [
+        /\\?\"teamName\\?\":\\?\"([A-Z]+)\\?\"[\s\S]{1,500}?\\?\"score\\?\":(\d+)[\s\S]{1,100}?\\?\"wickets\\?\":(\d+)[\s\S]{1,100}?\\?\"overs\\?\":([\d.]+)/g,
+        /\"teamName\":\"([A-Z]+)\"[\s\S]{1,500}?\"score\":(\d+)[\s\S]{1,100}?\"wickets\":(\d+)[\s\S]{1,100}?\"overs\":([\d.]+)/g
+    ];
+    for (const pat of teamScorePatterns) {
+        let jm;
+        while ((jm = pat.exec(html)) !== null) {
+            scoreList.push({
+                inning: jm[1].toUpperCase(),
+                r: parseInt(jm[2]),
+                w: parseInt(jm[3]),
+                o: parseFloat(jm[4])
+            });
+        }
+    }
+    if (scoreList.length > 0) console.log(`[Scraper] Strategy D (JSON) found ${scoreList.length} scores.`);
+
     // Strategy A: Mini-scorecard divs (Clean HTML)
     const cleanHtml = html.replace(/<!--[\s\S]*?-->/g, '').replace(/<span[^>]*>/g, '').replace(/<\/span>/g, '');
     const scoreDivRegex = />([A-Z]{3,4})\s*<\/div>\s*<div[^>]*>\s*([\d\/]+)\s*\(([\d.]+)\)/g;
     let sm;
+    let foundA = 0;
     while ((sm = scoreDivRegex.exec(cleanHtml)) !== null) {
+        foundA++;
         scoreList.push({
             inning: sm[1],
             r: parseInt(sm[2].split('/')[0]),
@@ -172,33 +193,43 @@ const scrapeCricbuzzMatch = async (teamA, teamB, matchPath = null) => {
             o: parseFloat(sm[3])
         });
     }
+    if (foundA > 0) console.log(`[Scraper] Strategy A (Divs) found ${foundA} scores.`);
 
     // Strategy B: Fallback to Meta Description/Title
     if (scoreList.length === 0) {
-        // Updated regex: Overs part is now optional (?:\s*\(([\d.]+)\))?
-        const metaScoreRegex = /([A-Z]{2,10})\s+([\d\-\/\s]+)(?:\s*\(([\d\.]+)\))?/ig;
+        // Updated regex: Handle multiple parentheses (e.g., player stats) by being more specific
+        // We look for TEAM SCORE followed optionally by (OVERS)
+        const metaScoreRegex = /([A-Z]{2,10})\s+([\d\/]+)(?:\s*\(([\d\.]+)\))?/ig;
         let smMatch;
+        let foundB = 0;
         while ((smMatch = metaScoreRegex.exec(desc)) !== null) {
+            const team = smMatch[1].toUpperCase();
+            // Filter out common player-stat keywords or names matching team pattern
+            if (['MILLER', 'SMITH', 'WARNER', 'KOHLI', 'KHAN'].includes(team)) continue;
+
             const scorePart = smMatch[2].trim();
+            foundB++;
             scoreList.push({
-                inning: smMatch[1].toUpperCase(),
+                inning: team,
                 r: parseInt(scorePart.split(/[\/-]/)[0]),
                 w: parseInt(scorePart.split(/[\/-]/)[1] || '0'),
                 o: parseFloat(smMatch[3] || '0')
             });
         }
+        if (foundB > 0) console.log(`[Scraper] Strategy B (Meta) found ${foundB} scores.`);
     }
 
-    // Strategy C: Absolute last resort - search the entire HTML for any score pattern
+    // Strategy C: Absolute last resort
     if (scoreList.length === 0) {
         // Updated regex: Overs part is now optional
         const broadRegex = /([A-Z]{2,10})\s+([\d\-\/]+)(?:\s*\(([\d.]+)\))?/ig;
         let smMatch;
+        let foundC = 0;
         while ((smMatch = broadRegex.exec(html)) !== null) {
             const team = smMatch[1].toUpperCase();
-            // Skip common words and player names
             if (['FOLLOW', 'COMMENTARY', 'CRICKET', 'MATCH'].includes(team)) continue;
             
+            foundC++;
             scoreList.push({
                 inning: team,
                 r: parseInt(smMatch[2].split(/[\/-]/)[0]),
@@ -206,6 +237,7 @@ const scrapeCricbuzzMatch = async (teamA, teamB, matchPath = null) => {
                 o: parseFloat(smMatch[3] || '0')
             });
         }
+        if (foundC > 0) console.log(`[Scraper] Strategy C (Broad) found ${foundC} scores.`);
     }
 
     // Filter scoreList to only include teams relevant to this match (exclude players/excess info)

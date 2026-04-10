@@ -175,7 +175,8 @@ const scrapeCricbuzzMatch = async (teamA, teamB, matchPath = null) => {
 
     // Strategy B: Fallback to Meta Description/Title
     if (scoreList.length === 0) {
-        const metaScoreRegex = /([A-Z]{2,10})\s+([\d\-\/\s]+)\s*\(([\d\.]+)\)/ig;
+        // Updated regex: Overs part is now optional (?:\s*\(([\d.]+)\))?
+        const metaScoreRegex = /([A-Z]{2,10})\s+([\d\-\/\s]+)(?:\s*\(([\d\.]+)\))?/ig;
         let smMatch;
         while ((smMatch = metaScoreRegex.exec(desc)) !== null) {
             const scorePart = smMatch[2].trim();
@@ -183,25 +184,26 @@ const scrapeCricbuzzMatch = async (teamA, teamB, matchPath = null) => {
                 inning: smMatch[1].toUpperCase(),
                 r: parseInt(scorePart.split(/[\/-]/)[0]),
                 w: parseInt(scorePart.split(/[\/-]/)[1] || '0'),
-                o: parseFloat(smMatch[3])
+                o: parseFloat(smMatch[3] || '0')
             });
         }
     }
 
     // Strategy C: Absolute last resort - search the entire HTML for any score pattern
     if (scoreList.length === 0) {
-        const broadRegex = /([A-Z]{2,10})\s+([\d\-\/]+)\s*\(([\d.]+)\)/ig;
+        // Updated regex: Overs part is now optional
+        const broadRegex = /([A-Z]{2,10})\s+([\d\-\/]+)(?:\s*\(([\d.]+)\))?/ig;
         let smMatch;
         while ((smMatch = broadRegex.exec(html)) !== null) {
             const team = smMatch[1].toUpperCase();
-            // Skip common words and player names (by checking length and known target teams)
+            // Skip common words and player names
             if (['FOLLOW', 'COMMENTARY', 'CRICKET', 'MATCH'].includes(team)) continue;
             
             scoreList.push({
                 inning: team,
                 r: parseInt(smMatch[2].split(/[\/-]/)[0]),
                 w: parseInt(smMatch[2].split(/[\/-]/)[1] || '0'),
-                o: parseFloat(smMatch[3])
+                o: parseFloat(smMatch[3] || '0')
             });
         }
     }
@@ -209,8 +211,19 @@ const scrapeCricbuzzMatch = async (teamA, teamB, matchPath = null) => {
     // Filter scoreList to only include teams relevant to this match (exclude players/excess info)
     const filteredScores = scoreList.filter(s => {
         const inn = s.inning.toLowerCase();
-        return inn.includes(teamA.toLowerCase().slice(0, 3)) || 
-               inn.includes(teamB.toLowerCase().slice(0, 3));
+        const tA = teamA.toLowerCase();
+        const tB = teamB.toLowerCase();
+        
+        // 1. Direct match or substring (e.g., "Oman" matches "Oman")
+        if (tA.includes(inn) || tB.includes(inn)) return true;
+        
+        // 2. Initials (e.g., "GT" matches "Gujarat Titans")
+        const initialsA = tA.split(/\s+/).map(w => w[0]).join("");
+        const initialsB = tB.split(/\s+/).map(w => w[0]).join("");
+        if (inn === initialsA || inn === initialsB) return true;
+        
+        // 3. Fallback: Check if inn is a valid abbreviation of the team (starts with 3 letters)
+        return inn.includes(tA.slice(0, 3)) || inn.includes(tB.slice(0, 3));
     });
 
     // 7. Extract Team Info (Abbr and Names)

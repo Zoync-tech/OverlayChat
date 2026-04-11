@@ -172,9 +172,8 @@ const scrapeCricbuzzMatch = async (teamA, teamB, matchPath = null) => {
     let tossChoice = null;
     // Patterns: "X won the toss and opted to bat", "X opt to bowl", "X opt to bat"
     const tossPatterns = [
-        />\s*([^<.]+)won the toss and opted to (bat|bowl)/i,
-        />\s*([^<.]+)opt to (bat|bowl)/i,
-        />\s*([^<.]+)opted to (bat|bowl)/i
+        />\s*([^<.]+?)\s+won the toss and\s+(?:opted to|opt to)\s+(bat|bowl)/i,
+        />\s*([^<.]+?)\s+(?:opted to|opt to)\s+(bat|bowl)/i
     ];
     for (const pat of tossPatterns) {
         const tm = html.match(pat);
@@ -270,20 +269,8 @@ const scrapeCricbuzzMatch = async (teamA, teamB, matchPath = null) => {
 
     // Filter scoreList to only include teams relevant to this match (exclude players/excess info)
     const filteredScores = scoreList.filter(s => {
-        const inn = s.inning.toLowerCase();
-        const tA = teamA.toLowerCase();
-        const tB = teamB.toLowerCase();
-        
-        // 1. Direct match or substring (e.g., "Oman" matches "Oman")
-        if (tA.includes(inn) || tB.includes(inn)) return true;
-        
-        // 2. Initials (e.g., "GT" matches "Gujarat Titans")
-        const initialsA = tA.split(/\s+/).map(w => w[0]).join("");
-        const initialsB = tB.split(/\s+/).map(w => w[0]).join("");
-        if (inn === initialsA || inn === initialsB) return true;
-        
-        // 3. Fallback: Check if inn is a valid abbreviation of the team (starts with 3 letters)
-        return inn.includes(tA.slice(0, 3)) || inn.includes(tB.slice(0, 3));
+        // Use the robust isTeamMatch logic previously defined in this script
+        return isTeamMatch(s.inning, teamA) || isTeamMatch(s.inning, teamB);
     });
 
     // 7. Extract Team Info (Abbr and Names)
@@ -346,11 +333,65 @@ const runMonitor = async () => {
   const yyyy = istTime.getFullYear();
   const todayStr = `${dd}-${mm}-${yyyy}`;
 
-  let todaysMatches = schedule.filter(m => m.date === todayStr);
+  const todaysMatches = schedule.filter(m => m.date === todayStr);
 
-  const hours = istTime.getHours();
-  const matchIdx = (todaysMatches.length > 1 && hours >= 16) ? 1 : 0;
-  const targetMatch = todaysMatches[matchIdx];
+  if (!todaysMatches.length) {
+    console.log(`No match found for today (${todayStr}). Exiting.`);
+    process.exit(0);
+  }
+
+  // --- DOUBLE HEADER LOGIC ---
+  let targetMatchIdx = 0;
+  if (todaysMatches.length > 1) {
+    const hours = istTime.getHours();
+    
+    // Check FB for Match 0 status to see if it's still running
+    const state0Snap = await db.ref(`rooms/${ROOM}/monitor_state`).once("value");
+    const state0 = state0Snap.val();
+    const metaSnap = await db.ref(`rooms/${ROOM}/meta`).once("value");
+    const meta = metaSnap.val();
+
+    // If meta has Match 0, and it's not marked as finished, we prioritize RESUMING it
+    const isMatch0ActiveInMeta = meta && isTeamMatch(meta.teamA, todaysMatches[0].home);
+    const isMatch0Finished = state0 && state0.matchNo === todaysMatches[0].matchNo && state0.finished;
+
+    if (hours < 16) {
+      targetMatchIdx = 0;
+    } else {
+      // It's after 4pm (Match 2 window)
+      if (isMatch0ActiveInMeta && !isMatch0Finished) {
+         console.log(`[Double-Header] Match 1 (${todaysMatches[0].home}) is still active in Firebase. Resuming it instead of starting Match 2.`);
+         targetMatchIdx = 0;
+      } else {
+         targetMatchIdx = 1;
+      }
+    }
+  }
+
+  const targetMatch = todaysMatches[targetMatchIdx];
+
+  // --- SAFETY WAIT ---
+  // If we decided to start Match 2, but Match 1 is still in meta and not finished, we must wait.
+  if (todaysMatches.length > 1 && targetMatchIdx === 1) {
+    console.log(`[Safety] Checking if Match 1 (${todaysMatches[0].home}) needs to clear before starting Match 2...`);
+    while (true) {
+      const metaSnap = await db.ref(`rooms/${ROOM}/meta`).once("value");
+      const meta = metaSnap.val();
+      const stateSnap = await db.ref(`rooms/${ROOM}/monitor_state`).once("value");
+      const state = stateSnap.val();
+
+      if (meta && isTeamMatch(meta.teamA, todaysMatches[0].home)) {
+        const isFinished = state && state.matchNo === todaysMatches[0].matchNo && state.finished;
+        if (!isFinished) {
+          console.log(`[Safety] Waiting for Match 1 (${todaysMatches[0].home} vs ${todaysMatches[0].away}) to finish before starting Match 2 (${targetMatch.home})...`);
+          await sleep(3 * 60 * 1000); // 3 mins
+          continue;
+        }
+      }
+      break; 
+    }
+    console.log(`[Safety] Match 1 resolved. Proceeding with ${targetMatch.home} vs ${targetMatch.away}.`);
+  }
 
   if (!targetMatch) {
     console.log(`No match found for today (${todayStr}). Exiting.`);
@@ -447,8 +488,11 @@ const runMonitor = async () => {
       }
 
       if (isTossConfirmed && score && score.length > 0) {
-        const s1 = score[0];
-        const s2 = score[1];
+        // Robust mapping: s1 is ALWAYS the team that batted first (battingTeamFull)
+        let s1 = score.find(s => isTeamMatch(s.inning, battingTeamFull));
+        // s2 is the other team in the score array (the chasers)
+        let s2 = score.find(s => s !== s1);
+
         const activeS = s2 || s1;
         console.log(`[Live Score] ${activeS.inning}: ${activeS.r}/${activeS.w} (${activeS.o} ov)`);
 

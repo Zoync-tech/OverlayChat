@@ -200,9 +200,12 @@ const scrapeCricbuzzMatch = async (teamA, teamB, matchPath = null) => {
     for (const pat of tossPatterns) {
         const tm = html.match(pat);
         if (tm) {
-            tossWinner = tm[1].trim();
-            tossChoice = tm[2].trim();
-            break;
+            const candidate = tm[1].trim();
+            if (isTeamMatch(candidate, teamA) || isTeamMatch(candidate, teamB)) {
+                tossWinner = candidate;
+                tossChoice = tm[2].trim();
+                break;
+            }
         }
     }
 
@@ -340,7 +343,7 @@ const runMonitor = async () => {
   setupFirebase();
   const db = admin.database();
   const ROOM = process.env.FIREBASE_ROOM || "ipl";
-  
+
   console.log(`[Firebase] Target Room: ${ROOM}`);
   console.log(`[Firebase] Prediction Link: https://overlaychat-6f3c1.web.app/host.html?room=${ROOM}`);
 
@@ -461,11 +464,11 @@ const runMonitor = async () => {
       isSecondInningsLocked = Boolean(meta.predictionsPaused) && firstInningsResolved;
       console.log(`[Resume] Status: ${firstInningsResolved ? '2nd' : '1st'} Innings | Locked: ${meta.predictionsPaused}`);
       
-      // Reconstruct battingTeamFull from metadata
-      if (meta.disableScoreB) {
-          battingTeamFull = meta.teamA;
+      // Reconstruct battingTeamFull from metadata by accounting for swapped flags
+      if (meta.secondInnings) {
+          battingTeamFull = meta.disableScoreB ? meta.teamB : meta.teamA;
       } else {
-          battingTeamFull = meta.teamB;
+          battingTeamFull = meta.disableScoreB ? meta.teamA : meta.teamB;
       }
       console.log(`[Resume] Identified Batting First: ${battingTeamFull}`);
   }

@@ -945,11 +945,42 @@ const renderMatchDetails = (matchId) => {
       };
     });
     
-    // Sort live by name for consistency, or total points if some are resolved
     standings.sort((a, b) => {
-      if (typeof a.total === "number" && typeof b.total === "number") {
-        if (b.total !== a.total) return b.total - a.total;
+      // 1. Live game sorting based on score predictions (Primary)
+      if (!currentMeta.secondInnings) {
+        const valA = isNaN(Number(a.p1Guess)) ? Infinity : Number(a.p1Guess);
+        const valB = isNaN(Number(b.p1Guess)) ? Infinity : Number(b.p1Guess);
+        if (valA !== valB) return valA - valB;
+      } else {
+        let chaser = null;
+        if (currentMeta.disableScoreA && !currentMeta.disableScoreB) chaser = currentMeta.teamB;
+        else if (currentMeta.disableScoreB && !currentMeta.disableScoreA) chaser = currentMeta.teamA;
+        
+        const aIsChaser = a.p2Winner && chaser && a.p2Winner.toLowerCase() === chaser.toLowerCase();
+        const bIsChaser = b.p2Winner && chaser && b.p2Winner.toLowerCase() === chaser.toLowerCase();
+        const aHasGuess = !isNaN(Number(a.p2Guess));
+        const bHasGuess = !isNaN(Number(b.p2Guess));
+
+        // Group 1: Chasing predictions, Group 2: Defending predictions, Group 3: No prediction
+        const getGroup = (isChaser, hasGuess) => hasGuess ? (isChaser ? 1 : 2) : 3;
+        const groupA = getGroup(aIsChaser, aHasGuess);
+        const groupB = getGroup(bIsChaser, bHasGuess);
+
+        if (groupA !== groupB) return groupA - groupB;
+
+        if (groupA !== 3) {
+          const valA = Number(a.p2Guess);
+          const valB = Number(b.p2Guess);
+          if (valA !== valB) return valA - valB;
+        }
       }
+
+      // 2. Tie-breaker: Total points (if available)
+      const totalA = typeof a.total === "number" ? a.total : -Infinity;
+      const totalB = typeof b.total === "number" ? b.total : -Infinity;
+      if (totalA !== totalB) return totalB - totalA;
+
+      // 3. Fallback: Alphabetical
       return a.name.localeCompare(b.name);
     });
     

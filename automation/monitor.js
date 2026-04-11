@@ -578,6 +578,13 @@ const runMonitor = async () => {
             console.log(`Match complete. Winner: ${matchWinner}`);
             const isChaserWinner = matchWinner && !isTeamMatch(matchWinner, battingTeamFull);
 
+            // Resolve matchWinner to the exact short name (teamA or teamB) used in predictions
+            let resolvedActualWinner = null;
+            if (matchWinner) {
+                if (isTeamMatch(matchWinner, targetMatch.home)) resolvedActualWinner = targetMatch.home;
+                else if (isTeamMatch(matchWinner, targetMatch.away)) resolvedActualWinner = targetMatch.away;
+            }
+
             const metaSnap = await db.ref(`rooms/${ROOM}/meta`).once("value");
             const meta = metaSnap.val() || {};
 
@@ -586,7 +593,7 @@ const runMonitor = async () => {
             const actualResult = isChaserWinner ? s2.o : s2.r;
 
             for (let pid in preds) {
-              const stats = calculateInnings2Points(preds[pid], matchWinner, actualResult, meta, isChaserWinner);
+              const stats = calculateInnings2Points(preds[pid], resolvedActualWinner, actualResult, meta, isChaserWinner);
               preds[pid] = { ...preds[pid], ...stats, points: stats.points };
             }
 
@@ -597,10 +604,36 @@ const runMonitor = async () => {
             const h1Snap = await db.ref(`rooms/${ROOM}/innings_history/1st`).once("value");
             const finalH1 = h1Snap.val() || {};
             const finals = calculateMatchFinals(finalH1, preds);
-            await db.ref(`rooms/${ROOM}/history/${targetMatch.matchNo}`).set(finals);
 
+            // Construct proper archive payload (same structure as manual archival in control.js)
+            const dateKey = `${todayStr.split('-').reverse().join('-')}_${Date.now()}`;
+            const archivePayload = {
+              matchTitle: targetMatch.titleStr || "Unnamed Match",
+              teamA: targetMatch.home,
+              teamB: targetMatch.away,
+              innings1: finalH1,
+              innings2: preds,
+              finalStandings: finals,
+              matchResults: {
+                actual1st: s1 ? s1.r : 0,
+                actual2nd: actualResult,
+                actualWinner: resolvedActualWinner
+              }
+            };
+
+            await db.ref(`rooms/${ROOM}/history/${dateKey}`).set(archivePayload);
+            // We also keep the old matchNo backup just in case
+            await db.ref(`rooms/${ROOM}/history/${targetMatch.matchNo}`).set(finals);
+            
+            // Wipe Live Game Nodes (to mimic 'End Match' behavior)
             await db.ref(`rooms/${ROOM}/predictions`).remove();
+            await db.ref(`rooms/${ROOM}/innings_history`).remove();
+            await db.ref(`rooms/${ROOM}/meta`).update({ matchTitle: '', predictionsPaused: false });
+            
             await db.ref(`rooms/${ROOM}/monitor_state`).set({ matchNo: targetMatch.matchNo, finished: true });
+            
+            // Note: Season Leaderboard update takes a bit safely done on next dashboard load, 
+            // but we could technically run a sync here.
             console.log("Match fully resolved and successfully archived! Awaiting transition to Match 2.");
             break;
           }

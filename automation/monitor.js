@@ -72,25 +72,44 @@ const getSchedule = () => {
 
 // --- LOGIC HELPERS ---
 
+const IPL_TEAM_MAP = {
+  "MI": "Mumbai Indians",
+  "CSK": "Chennai Super Kings",
+  "RCB": "Royal Challengers Bengaluru",
+  "KKR": "Kolkata Knight Riders",
+  "SRH": "Sunrisers Hyderabad",
+  "PBKS": "Punjab Kings",
+  "DC": "Delhi Capitals",
+  "RR": "Rajasthan Royals",
+  "GT": "Gujarat Titans",
+  "LSG": "Lucknow Super Giants"
+};
+
 /**
  * Robustly checks if a candidate team string matches a target team string.
  * Handles abbreviations, initials, and full names.
  */
 const isTeamMatch = (candidate, target) => {
   if (!candidate || !target) return false;
-  const c = candidate.toLowerCase().trim();
-  const t = target.toLowerCase().trim();
+  const c = candidate.toUpperCase().trim();
+  const t = target.toUpperCase().trim();
   
-  // 1. Direct or substring match
-  if (c.includes(t) || t.includes(c)) return true;
+  // 1. Direct or mapping match
+  if (c === t || c.includes(t) || t.includes(c)) return true;
+
+  // 2. Check IPL Mapping
+  for (const [abbr, full] of Object.entries(IPL_TEAM_MAP)) {
+    const upperAbbr = abbr.toUpperCase();
+    const upperFull = full.toUpperCase();
+    if ((c === upperAbbr && t === upperFull) || (t === upperAbbr && c === upperFull)) return true;
+  }
   
-  // 2. Initials (e.g., "GT" matches "Gujarat Titans")
+  // 3. Initials (e.g., "GT" matches "Gujarat Titans")
   const initialsOfCandidate = c.split(/\s+/).map(w => w[0]).join("");
   const initialsOfTarget = t.split(/\s+/).map(w => w[0]).join("");
-  
   if (initialsOfCandidate === t || initialsOfTarget === c) return true;
   
-  // 3. First word match (e.g., "Kolkata" matches "Kolkata Knight Riders")
+  // 4. First word match (e.g., "Kolkata" matches "Kolkata Knight Riders")
   const firstWordC = c.split(/\s+/)[0];
   const firstWordT = t.split(/\s+/)[0];
   if (firstWordC === firstWordT && firstWordC.length >= 3) return true;
@@ -151,8 +170,9 @@ const scrapeCricbuzzMatch = async (teamA, teamB, matchPath = null) => {
         /class="[^"]*cb-text-complete[^"]*"[^>]*>\s*([^<]+)\s*</i,
         /class="[^"]*cb-text-inprogress[^"]*"[^>]*>\s*([^<]+)\s*</i,
         /class="[^"]*cb-text-live[^"]*"[^>]*>\s*([^<]+)\s*</i,
-        // Match "opted to bowl/bat" specifically for toss
-        />\s*([^<]*opted to (?:bat|bowl)[^<]*)\s*</i,
+        /class="[^"]*cb-text-stts[^"]*"[^>]*>\s*([^<]+)\s*</i,
+        // Match "opted to bowl/bat" or "opt to bowl/bat" specifically
+        />\s*([^<]*(?:opted to|opt to) (?:bat|bowl)[^<]*)\s*</i,
         // Broad fallback last
         />\s*([^<]*(?:won by|Match tied|Match abandoned|No result)[^<]*)\s*</i
     ];
@@ -173,7 +193,9 @@ const scrapeCricbuzzMatch = async (teamA, teamB, matchPath = null) => {
     // Patterns: "X won the toss and opted to bat", "X opt to bowl", "X opt to bat"
     const tossPatterns = [
         />\s*([^<.]+?)\s+won the toss and\s+(?:opted to|opt to)\s+(bat|bowl)/i,
-        />\s*([^<.]+?)\s+(?:opted to|opt to)\s+(bat|bowl)/i
+        />\s*([^<.]+?)\s+(?:opted to|opt to)\s+(bat|bowl)/i,
+        /([A-Z]{2,5})\s+won the toss and\s+(?:opted to|opt to)\s+(bat|bowl)/i,
+        /([A-Z]{2,5})\s+(?:opted to|opt to)\s+(bat|bowl)/i
     ];
     for (const pat of tossPatterns) {
         const tm = html.match(pat);
@@ -274,14 +296,16 @@ const scrapeCricbuzzMatch = async (teamA, teamB, matchPath = null) => {
     });
 
     // 7. Extract Team Info (Abbr and Names)
-    // We try to find codes and full names from the title or description
     const teams = [];
-    const teamInfoRegex = /([A-Z]{2,4})\s+vs\s+([A-Z]{2,4})/i;
-    const tim = title.match(teamInfoRegex);
-    if (tim) {
-        teams.push({ shortname: tim[1], name: tim[1] }); // Simplified
-        teams.push({ shortname: tim[2], name: tim[2] });
-    }
+    const getAbbr = (name) => {
+        for (const [abbr, full] of Object.entries(IPL_TEAM_MAP)) {
+            if (isTeamMatch(name, full)) return abbr;
+        }
+        return name.slice(0, 3).toUpperCase();
+    };
+
+    teams.push({ shortname: getAbbr(teamA), name: teamA });
+    teams.push({ shortname: getAbbr(teamB), name: teamB });
 
     // Determine Match Winner
     let matchWinner = null;

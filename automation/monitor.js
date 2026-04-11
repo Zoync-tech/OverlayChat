@@ -460,6 +460,14 @@ const runMonitor = async () => {
       isFirstInningsLocked = Boolean(meta.predictionsPaused) && !firstInningsResolved;
       isSecondInningsLocked = Boolean(meta.predictionsPaused) && firstInningsResolved;
       console.log(`[Resume] Status: ${firstInningsResolved ? '2nd' : '1st'} Innings | Locked: ${meta.predictionsPaused}`);
+      
+      // Reconstruct battingTeamFull from metadata
+      if (meta.disableScoreB) {
+          battingTeamFull = meta.teamA;
+      } else {
+          battingTeamFull = meta.teamB;
+      }
+      console.log(`[Resume] Identified Batting First: ${battingTeamFull}`);
   }
 
   console.log("--- ENTERING MONITOR LOOP ---");

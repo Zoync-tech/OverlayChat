@@ -7,9 +7,14 @@ const { calculateInnings1Points, calculateInnings2Points, calculateMatchFinals }
 const util = require("util");
 
 // --- FORCE REAL-TIME LOG OUTPUT ---
-console.log = (...args) => { process.stdout.write(util.format(...args) + "\n"); };
-console.error = (...args) => { process.stderr.write(util.format(...args) + "\n"); };
-console.warn = (...args) => { process.stderr.write(util.format(...args) + "\n"); };
+const getTimestamp = () => {
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}, ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+};
+console.log = (...args) => { process.stdout.write(`[${getTimestamp()}] ` + util.format(...args) + "\n"); };
+console.error = (...args) => { process.stderr.write(`[${getTimestamp()}] ` + util.format(...args) + "\n"); };
+console.warn = (...args) => { process.stderr.write(`[${getTimestamp()}] ` + util.format(...args) + "\n"); };
 
 // --- HELPERS ---
 
@@ -628,10 +633,19 @@ const runMonitor = async () => {
               console.log("[Sleep] Waiting 20 mins for 2nd innings start...");
               delay = 20 * 60 * 1000;
               hasSleptInnings2 = true;
-           } else if (s2.o >= 3.0 && s2.o < 18.0) {
-              delay = 10 * 60 * 1000;
-           } else if (s2.o >= 18.0) {
-              delay = 1 * 60 * 1000;
+           } else {
+              // In a chase, if the team is within 15 runs of the target, poll every 1 min
+              // so we catch an early win without waiting up to 10 mins
+              const target2 = s1 ? s1.r + 1 : null;
+              const runsNeeded = target2 !== null ? target2 - s2.r : Infinity;
+              if (runsNeeded <= 15) {
+                 console.log(`[Fast-Poll] Chasing team needs only ${runsNeeded} runs. Polling every 1 min.`);
+                 delay = 1 * 60 * 1000;
+              } else if (s2.o >= 3.0 && s2.o < 18.0) {
+                 delay = 10 * 60 * 1000;
+              } else if (s2.o >= 18.0) {
+                 delay = 1 * 60 * 1000;
+              }
            }
         }
       }

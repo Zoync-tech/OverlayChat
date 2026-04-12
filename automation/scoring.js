@@ -46,6 +46,7 @@ const calculateInnings1Points = (prediction, actual, meta) => {
 };
 
 const calculateInnings2Points = (prediction, actualWinner, actualResult, meta, isOversOverride = null) => {
+  actualWinner = (actualWinner || "").toLowerCase();
   const predWinner = (prediction.predictedWinner || "").toLowerCase();
   const teamA = (meta.teamA || "Team A").toLowerCase();
   const teamB = (meta.teamB || "Team B").toLowerCase();

@@ -468,7 +468,7 @@ const runMonitor = async () => {
       const res = await scrapeCricbuzzMatch(targetMatch.home, targetMatch.away, matchPath);
       if (res.status === 'failure') throw new Error(res.reason);
 
-      const { tossWinner, tossChoice, matchWinner, score, status } = res.data;
+      let { tossWinner, tossChoice, matchWinner, score, status } = res.data;
 
       const scoreStr = score && score.length > 0 
         ? score.map(s => `${s.inning}: ${s.r}/${s.w} (${s.o} ov)`).join(" | ") 
@@ -573,7 +573,7 @@ const runMonitor = async () => {
           if (s2.o >= 19.6 || s2.w >= 10 || matchWinner || (s1 && s2.r > s1.r)) {
             // If the chasing team mathematically crossed the target, hard-declare them the winner
             if (!matchWinner && s1 && s2.r > s1.r) {
-                matchWinner = currentChasingTeam;
+                matchWinner = chasingTeam;
             }
             console.log(`Match complete. Winner: ${matchWinner}`);
             const isChaserWinner = matchWinner && !isTeamMatch(matchWinner, battingTeamFull);
@@ -608,6 +608,7 @@ const runMonitor = async () => {
             // Construct proper archive payload (same structure as manual archival in control.js)
             const dateKey = `${todayStr.split('-').reverse().join('-')}_${Date.now()}`;
             const archivePayload = {
+              archivedAt: Date.now(),
               matchTitle: targetMatch.titleStr || "Unnamed Match",
               teamA: targetMatch.home,
               teamB: targetMatch.away,
@@ -646,9 +647,8 @@ const runMonitor = async () => {
       if (!isTossConfirmed) {
         delay = 3 * 60 * 1000;
       } else {
-        const currentChasingTeam = isTeamMatch(targetMatch.home, battingTeamFull) ? targetMatch.away : targetMatch.home;
         const s1 = score && score.find(s => isTeamMatch(s.inning, battingTeamFull));
-        const s2 = score && score.find(s => isTeamMatch(s.inning, currentChasingTeam));
+        const s2 = score && score.find(s => isTeamMatch(s.inning, chasingTeam));
         
         if (!firstInningsResolved && s1) {
            if (s1.o < 0.1 && !hasSleptInnings1) {

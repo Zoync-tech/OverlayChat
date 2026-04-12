@@ -622,9 +622,12 @@ const runMonitor = async () => {
               }
             };
 
-            await db.ref(`rooms/${ROOM}/history/${dateKey}`).set(archivePayload);
-            // We also keep the old matchNo backup just in case
             await db.ref(`rooms/${ROOM}/history/${targetMatch.matchNo}`).set(finals);
+            console.log("Match fully resolved and successfully archived!");
+
+            // Trigger season leaderboard sync
+            console.log("Triggering Season Leaderboard sync...");
+            await syncSeasonLeaderboard(db, ROOM);
             
             // Wipe Live Game Nodes (to mimic 'End Match' behavior)
             await db.ref(`rooms/${ROOM}/predictions`).remove();
@@ -702,7 +705,53 @@ const runMonitor = async () => {
   process.exit(0);
 };
 
-module.exports = { scrapeCricbuzzMatch };
+/**
+ * Recalculates the season leaderboard by aggregating all historical matches.
+ */
+async function syncSeasonLeaderboard(db, room) {
+  try {
+    const historySnap = await db.ref(`rooms/${room}/history`).once('value');
+    const history = historySnap.val() || {};
+    
+    const seasonMap = new Map();
+    
+    // Iterate through all matches in history
+    Object.entries(history).forEach(([key, match]) => {
+      // Standard: We only process primary match records (containing '-') 
+      // to avoid double-counting if numeric backup keys exist.
+      if (!key.includes('-')) return;
+      
+      const standings = match && match.finalStandings ? match.finalStandings : [];
+      
+      standings.forEach(r => {
+        if (!r.name) return;
+        const nameKey = r.name.trim().toLowerCase();
+        if (!seasonMap.has(nameKey)) {
+          seasonMap.set(nameKey, { name: r.name, total: 0, matchCount: 0 });
+        }
+        const player = seasonMap.get(nameKey);
+        player.total += (r.total || 0);
+        player.matchCount += 1;
+      });
+    });
+
+    const players = Array.from(seasonMap.values()).map(p => ({
+      ...p,
+      ppg: Number((p.total / (p.matchCount || 1)).toFixed(2))
+    }));
+
+    // Sort by total points (consistent with control.js)
+    const sorted = players.sort((a, b) => b.total - a.total);
+
+    // Persist to Firebase
+    await db.ref(`rooms/${room}/season_leaderboard`).set(sorted);
+    console.log(`[Leaderboard] Successfully synced stats for ${sorted.length} players.`);
+  } catch (err) {
+    console.error(`[Leaderboard Error] Failed to sync: ${err.message}`);
+  }
+}
+
+module.exports = { scrapeCricbuzzMatch, syncSeasonLeaderboard };
 if (require.main === module) {
   runMonitor();
 }

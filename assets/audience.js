@@ -380,8 +380,9 @@ if (!roomSelected) {
 
     // --- Season Leaderboard Listener ---
     onValue(roomRef(roomId, "season_leaderboard"), (snapshot) => {
-      const data = snapshot.val() || {};
-      const standings = data.standings || [];
+      const data = snapshot.val();
+      // Handle both direct array and wrapped object formats for safety
+      const standings = Array.isArray(data) ? data : (data?.standings || []);
       renderLeaderboard(standings);
     });
 

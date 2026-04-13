@@ -600,8 +600,6 @@ const runMonitor = async () => {
     let isFirstInningsLocked = false;
     let isSecondInningsLocked = false;
     let firstInningsResolved = false;
-    let hasSleptInnings1 = false;
-    let hasSleptInnings2 = false;
     let predictionsOpenedAt = null; // timestamp (ms) when predictions were opened for this match
     let chasingTeam = "";
 
@@ -636,10 +634,24 @@ const runMonitor = async () => {
 
         let { tossWinner, tossChoice, matchWinner, score, status } = res.data;
 
+        const isInningsBreak = status.toLowerCase().includes("innings break");
+        const s1 = score && score.find(s => isTeamMatch(s.inning, battingTeamFull));
+        const s2 = score && score.find(s => isTeamMatch(s.inning, chasingTeam));
+
+        let currentOver = "0.0";
+        if (s2) currentOver = s2.o.toString();
+        else if (s1) currentOver = s1.o.toString();
+
+        await db.ref(`rooms/${ROOM}/meta`).update({
+          currentOver,
+          isInningsBreak,
+          updatedAt: admin.database.ServerValue.TIMESTAMP
+        });
+
         const scoreStr = score && score.length > 0
           ? score.map(s => `${s.inning}: ${s.r}/${s.w} (${s.o} ov)`).join(" | ")
           : "No score yet";
-        console.log(`[Poll] Status: "${status}" | Score: [${scoreStr}]`);
+        console.log(`[Poll] Status: "${status}" | Over: ${currentOver} | Break: ${isInningsBreak} | Score: [${scoreStr}]`);
 
         // 1. TOSS
         if (!isTossConfirmed && tossWinner && tossChoice) {
@@ -717,10 +729,10 @@ const runMonitor = async () => {
 
         if (isTossConfirmed && score && score.length > 0) {
           // Robust mapping: s1 is ALWAYS the team that batted first (battingTeamFull)
-          let s1 = score.find(s => isTeamMatch(s.inning, battingTeamFull));
+          s1 = score.find(s => isTeamMatch(s.inning, battingTeamFull));
 
           // s2 is the other team (the chasers)
-          let s2 = score.find(s => isTeamMatch(s.inning, chasingTeam));
+          s2 = score.find(s => isTeamMatch(s.inning, chasingTeam));
 
           const activeS = s2 || s1;
           if (s2) {
@@ -1018,37 +1030,34 @@ ${top3Lines}
         if (!isTossConfirmed) {
           delay = 3 * 60 * 1000;
         } else {
-          const s1 = score && score.find(s => isTeamMatch(s.inning, battingTeamFull));
-          const s2 = score && score.find(s => isTeamMatch(s.inning, chasingTeam));
+          s1 = score && score.find(s => isTeamMatch(s.inning, battingTeamFull));
+          s2 = score && score.find(s => isTeamMatch(s.inning, chasingTeam));
 
           if (!firstInningsResolved && s1) {
-            if (s1.o < 0.1 && !hasSleptInnings1) {
-              console.log("[Sleep] Waiting 20 mins for match start...");
-              delay = 20 * 60 * 1000;
-              hasSleptInnings1 = true;
-            } else if (s1.o >= 3.0 && s1.o < 18.0) {
-              delay = 10 * 60 * 1000;
+            if (s1.o < 0.1) {
+              delay = 3 * 60 * 1000; // Poll 3 mins until first ball
+            } else if (s1.o >= 0.1 && s1.o < 2.6) {
+              delay = 1 * 60 * 1000; // Fast poll (1 min) for the first 3 overs for penalty accuracy
+            } else if (s1.o >= 2.6 && s1.o < 18.0) {
+              delay = 10 * 60 * 1000; // Slow poll (10 mins) for middle overs
             } else if (s1.o >= 18.0) {
-              delay = 1 * 60 * 1000;
+              delay = 1 * 60 * 1000; // Fast poll (1 min) for death overs
             }
           }
           else if (firstInningsResolved && s2) {
-            if (s2.o < 0.1 && !hasSleptInnings2) {
-              console.log("[Sleep] Waiting 20 mins for 2nd innings start...");
-              delay = 20 * 60 * 1000;
-              hasSleptInnings2 = true;
+            if (s2.o < 0.1) {
+              delay = 3 * 60 * 1000; // Wait 3 mins for 2nd innings start
+            } else if (s2.o >= 0.1 && s2.o < 2.6) {
+              delay = 1 * 60 * 1000; // Fast poll for start of chase
             } else {
               // In a chase, if the team is within 15 runs of the target, poll every 1 min
-              // so we catch an early win without waiting up to 10 mins
               const target2 = s1 ? s1.r + 1 : null;
               const runsNeeded = target2 !== null ? target2 - s2.r : Infinity;
-              if (runsNeeded <= 15) {
-                console.log(`[Fast-Poll] Chasing team needs only ${runsNeeded} runs. Polling every 1 min.`);
+              
+              if (runsNeeded <= 15 || s2.o >= 18.0) {
                 delay = 1 * 60 * 1000;
-              } else if (s2.o >= 3.0 && s2.o < 18.0) {
+              } else if (s2.o >= 2.6 && s2.o < 18.0) {
                 delay = 10 * 60 * 1000;
-              } else if (s2.o >= 18.0) {
-                delay = 1 * 60 * 1000;
               }
             }
           }

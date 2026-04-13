@@ -27,21 +27,27 @@ const calculateInnings1Points = (prediction, actual, meta) => {
   }
 
   const diff = Math.abs(actual - predScore);
-  if (diff === 0) return { points: 200, diff, rawDiff: 0, isExact: true, isNear5: true, isNear10: true, guess: predScore, mode: "Score" };
+  if (diff === 0) {
+    const totalPoints = Math.max(0, 200 - (prediction.penalty || 0));
+    return { points: totalPoints, diff, rawDiff: 0, isExact: true, isNear5: true, isNear10: true, guess: predScore, mode: "Score", penaltyApplied: (prediction.penalty || 0) };
+  }
 
   const base = Math.round(Math.max(0, 120 - (diff * 1.2)));
   const near5 = diff <= 5 ? 20 : 0;
   const near10 = diff <= 10 ? 10 : 0;
 
+  const totalPoints = Math.max(0, (base + near5 + near10) - (prediction.penalty || 0));
+  
   return {
-    points: base + near5 + near10,
+    points: totalPoints,
     diff,
     rawDiff: diff,
     isExact: false,
     isNear5: diff <= 5,
     isNear10: diff <= 10,
     guess: predScore,
-    mode: "Score"
+    mode: "Score",
+    penaltyApplied: (prediction.penalty || 0)
   };
 };
 
@@ -80,7 +86,8 @@ const calculateInnings2Points = (prediction, actualWinner, actualResult, meta, i
     const exactBonus = (diff === 0) ? 70 : 0;
 
     points += accuracy + near3Bonus + rangeBonus + exactBonus;
-    return { points, diff: ballsToOversDisplay(diff), rawDiff: diff, guess: predVal, isExact: diff === 0, mode: "Overs" };
+    const finalPoints = Math.max(0, points - (prediction.penalty || 0));
+    return { points: finalPoints, diff: ballsToOversDisplay(diff), rawDiff: diff, guess: predVal, isExact: diff === 0, mode: "Overs", penaltyApplied: (prediction.penalty || 0) };
   } else {
     // Defending/Score Scenario
     const diff = Math.abs(Number(actualResult) - Number(predVal || 0));
@@ -90,7 +97,8 @@ const calculateInnings2Points = (prediction, actualWinner, actualResult, meta, i
     const exactBonus = (diff === 0) ? 70 : 0;
 
     points += base + rangeBonusTier1 + rangeBonusTier2 + exactBonus;
-    return { points, diff: `${diff} runs`, rawDiff: diff, guess: predVal, isExact: diff === 0, mode: "Score" };
+    const finalPoints = Math.max(0, points - (prediction.penalty || 0));
+    return { points: finalPoints, diff: `${diff} runs`, rawDiff: diff, guess: predVal, isExact: diff === 0, mode: "Score", penaltyApplied: (prediction.penalty || 0) };
   }
 };
 

@@ -35,6 +35,8 @@ let localStandings = [];
 let localHistory = {};
 let seasonSortMode = "total"; // "total", "ppg", "avg"
 let returnToPlayerName = null; // Track source for "Back" button safe navigation
+let existingWinner = "";
+let existingPenalty = 0;
 
 
 const audienceGate = document.querySelector("#audienceGate");
@@ -416,6 +418,11 @@ if (!roomSelected) {
         scoreAInput.value = (prediction.scoreA !== undefined && prediction.scoreA !== null) ? prediction.scoreA : "";
         scoreBInput.value = (prediction.scoreB !== undefined && prediction.scoreB !== null) ? prediction.scoreB : "";
         predictedWinnerInput.value = prediction.predictedWinner || "";
+        existingWinner = prediction.predictedWinner || "";
+        existingPenalty = prediction.penalty || 0;
+      } else {
+        existingWinner = "";
+        existingPenalty = 0;
       }
 
       // We don't have meta yet here usually, but syncPredictionAccess will be called by meta listener
@@ -453,13 +460,25 @@ if (!roomSelected) {
         .map(([winner, count]) => `${winner}: ${count}`)
         .join(" | ");
 
+      // Blind Mode check: 
+      // 1. Before match starts (Over 0.0 and 1st Innings): Everyone is blind.
+      // 2. During match: You are blind until you predict.
+      // 3. Innings Break: You are blind for 2nd innings until you predict.
+      const overVal = parseFloat(currentMeta.currentOver || "0");
+      const isMatchStarted = overVal > 0 || currentMeta.secondInnings;
+      const isBlind = !isMatchStarted || (!predictionLocked && !currentMeta.isInningsBreak);
+
       if (!predictionsPaused && (!predictionLocked || allowReprediction)) {
-        setStatus(predictionStatus, summary || "Live");
+        setStatus(predictionStatus, isBlind ? "Predict to see standings" : (summary || "Live"));
       }
 
       // If we are currently looking at the live match details in the modal, re-render it
       if (!matchDetailView.classList.contains("hidden") && matchDetailTitle.dataset.matchId === "live") {
-        renderMatchDetails("live");
+        if (isBlind) {
+          matchDetailList.innerHTML = `<div class="blind-notice"><h3>Predictions are blind</h3><p>${!isMatchStarted ? "Standings will be revealed once the match starts!" : "Make your prediction first to see what others guessed!"}</p></div>`;
+        } else {
+          renderMatchDetails("live");
+        }
       }
     });
   }
@@ -525,19 +544,56 @@ predictionForm?.addEventListener("submit", async (event) => {
     return;
   }
 
+  // --- Penalty Calculation ---
+  let addedPenalty = 0;
+  let breakdown = [];
+  const over = parseFloat(currentMeta.currentOver || "0");
+  const isUpdate = predictionLocked && !currentMeta.isInningsBreak; 
+
+  if (currentMeta.isInningsBreak) {
+    addedPenalty = 0; // Encourages participation in 2nd innings
+  } else {
+    // 1. Entry/Update Over penalty
+    if (!isUpdate) {
+      if (over >= 0.1 && over <= 1.0) { addedPenalty = 5; breakdown.push("-5 Entry Over 1"); }
+      else if (over > 1.0 && over <= 2.0) { addedPenalty = 10; breakdown.push("-10 Entry Over 2"); }
+      else if (over > 2.0 && over <= 3.0) { addedPenalty = 15; breakdown.push("-15 Entry Over 3"); }
+    } else {
+      if (over >= 0.1 && over <= 1.0) { addedPenalty = 5; breakdown.push("-5 Update Over 1"); }
+      else if (over > 1.0 && over <= 2.0) { addedPenalty = 20; breakdown.push("-20 Update Over 2"); }
+      else if (over > 2.0 && over <= 3.0) { addedPenalty = 30; breakdown.push("-30 Update Over 3"); }
+    }
+
+    // 2. Winner Change Penalty
+    if (existingWinner && predictedWinner !== existingWinner) {
+      addedPenalty += 20;
+      breakdown.push("-20 Winner Change");
+    }
+  }
+
+  if (addedPenalty > 0) {
+    const totalNew = existingPenalty + addedPenalty;
+    const msg = `CAUTION: This action will incur a penalty of -${addedPenalty} pts.\n\nReason: ${breakdown.join(", ")}\n\nYour total match penalty will be -${totalNew} pts.\n\nContinue?`;
+    if (!window.confirm(msg)) return;
+  }
+
   rememberViewerName(name);
   setStatus(predictionStatus, "Sending...");
 
   try {
+    const finalPenalty = existingPenalty + addedPenalty;
     await savePrediction(roomId, clientId, {
       clientId,
       name,
       scoreA,
       scoreB,
-      predictedWinner
+      predictedWinner,
+      penalty: finalPenalty
     });
     predictionLocked = true;
     isEditingReprediction = false;
+    existingWinner = predictedWinner;
+    existingPenalty = finalPenalty;
     syncPredictionAccess(currentMeta);
     setStatus(predictionStatus, "Prediction locked", "neutral");
   } catch (error) {
@@ -979,8 +1035,9 @@ const renderMatchDetails = (matchId) => {
         p2Score = "-";
       }
 
-      let penalty = 0;
-      if (p1Winner && p2Winner && p1Winner.toLowerCase() !== p2Winner.toLowerCase()) {
+      let penalty = Number(pActive.penalty || 0);
+      // Fallback/Legacy: if no penalty field but winner differs, show current logic
+      if (!pActive.penalty && p1Winner && p2Winner && p1Winner.toLowerCase() !== p2Winner.toLowerCase()) {
         penalty = -20;
       }
 

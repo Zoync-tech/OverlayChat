@@ -16,6 +16,8 @@ console.log = (...args) => { process.stdout.write(`[${getTimestamp()}] ` + util.
 console.error = (...args) => { process.stderr.write(`[${getTimestamp()}] ` + util.format(...args) + "\n"); };
 console.warn = (...args) => { process.stderr.write(`[${getTimestamp()}] ` + util.format(...args) + "\n"); };
 
+const CRICKET_ROLE_ID = process.env.DISCORD_ROLE_ID || "1492814845035417690";
+
 // --- HELPERS ---
 
 /**
@@ -32,7 +34,11 @@ const sendDiscordNotification = (content, embed) => {
   return new Promise((resolve) => {
     try {
       const url = new URL(webhookUrl);
-      const body = JSON.stringify({ content, embeds: embed ? [embed] : [] });
+      const body = JSON.stringify({
+        content,
+        embeds: embed ? [embed] : [],
+        allowed_mentions: { parse: ["roles", "users", "everyone"] } // Ensure pings are allowed
+      });
       const options = {
         hostname: url.hostname,
         path: url.pathname + url.search,
@@ -91,6 +97,10 @@ const setupFirebase = () => {
     const defaultVal = process.env.FIREBASE_SERVICE_ACCOUNT;
     if (!defaultVal) throw new Error("No FIREBASE_SERVICE_ACCOUNT");
     const serviceAccount = JSON.parse(defaultVal);
+    // Fix: Handle escaped newlines in the private key (common in .env files)
+    if (serviceAccount.private_key) {
+      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
+    }
     if (!admin.apps.length) {
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
@@ -193,34 +203,31 @@ const scrapeCricbuzzMatch = async (teamA, teamB, matchPath = null) => {
       const nextFStr = nextFChunks.join('');
 
       // Strategy 1: Find matchId by matching teamSName pairs in the JSON
-      // Pattern: "teamSName":"SRH" ... "teamSName":"RR" (within ~1000 chars) alongside a matchId
-      const matchIdRegex = /"matchId":(\d+)[^}]{0,2000}?"teamSName":"([A-Z]+)"[^}]{0,1000}?"teamSName":"([A-Z]+)"/g;
+      // Pattern: "matchId":NNN ... "teamSName":"SRH" ... "teamSName":"RR" within same match block
+      // Use [\s\S] (not [^}]) so the regex can cross nested JSON braces
+      const matchIdRegex = /"matchId":(\d+)[\s\S]{0,1500}?"teamSName":"([A-Z]+)"[\s\S]{0,500}?"teamSName":"([A-Z]+)"/g;
       let jm;
       let foundMatchId = null;
       while ((jm = matchIdRegex.exec(nextFStr)) !== null) {
         const t1 = jm[2].toLowerCase();
         const t2 = jm[3].toLowerCase();
+        // Require BOTH teams to match (not just one)
         if ((isTeamMatch(t1, teamA) && isTeamMatch(t2, teamB)) ||
-            (isTeamMatch(t1, teamB) && isTeamMatch(t2, teamA)) ||
-            t1 === lowerA || t1 === lowerB || t2 === lowerA || t2 === lowerB) {
-          // Double-check the nearby context includes both teams
-          const ctx = nextFStr.slice(jm.index, jm.index + 800);
-          if ((ctx.toLowerCase().includes(lowerA) || ctx.includes(teamA)) &&
-              (ctx.toLowerCase().includes(lowerB) || ctx.includes(teamB))) {
-            foundMatchId = jm[1];
-            console.log(`[Scraper] Strategy 1: Found matchId=${foundMatchId} for ${teamA} vs ${teamB}`);
-            break;
-          }
+            (isTeamMatch(t1, teamB) && isTeamMatch(t2, teamA))) {
+          foundMatchId = jm[1];
+          console.log(`[Scraper] Strategy 1: Found matchId=${foundMatchId} for ${teamA} vs ${teamB} (teams: ${jm[2]} vs ${jm[3]})`);
+          break;
         }
       }
 
-      // Strategy 2: Search for matchId near team name strings  
+      // Strategy 2: Search for matchId near full team name strings (tight 800 char window)
       if (!foundMatchId) {
         const teamNameA = IPL_TEAM_MAP[teamA] || teamA;
         const teamNameB = IPL_TEAM_MAP[teamB] || teamB;
         const escapedA = teamNameA.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const escapedB = teamNameB.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const nameRegex = new RegExp(`"matchId":(\\d+)[\\s\\S]{0,3000}?${escapedA}[\\s\\S]{0,1000}?${escapedB}`, 'i');
+        // Use a tight window (800 chars) to avoid matching across different match entries
+        const nameRegex = new RegExp(`"matchId":(\\d+)[\\s\\S]{0,800}?${escapedA}[\\s\\S]{0,400}?${escapedB}`, 'i');
         const nameMatch = nextFStr.match(nameRegex);
         if (nameMatch) {
           foundMatchId = nameMatch[1];
@@ -467,8 +474,42 @@ const runMonitor = async () => {
 
   const todaysMatches = schedule.filter(m => m.date === todayStr);
 
+  // --- PRE-LOAD NEXT MATCH (Even if not today) ---
+  // Find the first match in history that hasn't been played yet
+  console.log("[Setup] Checking for next scheduled match...");
+  const historySnap = await db.ref(`rooms/${ROOM}/history`).once("value");
+  const historyKeys = Object.keys(historySnap.val() || {});
+  
+  const nextScheduledMatch = schedule.find(m => !historyKeys.includes(m.matchNo));
+  
+  if (nextScheduledMatch) {
+    const metaSnap = await db.ref(`rooms/${ROOM}/meta`).once("value");
+    const currentMeta = metaSnap.val() || {};
+    
+    // If room is empty or on an old match, push the next one
+    if (!currentMeta.teamA || (!isTeamMatch(currentMeta.teamA, nextScheduledMatch.home) && !currentMeta.secondInnings)) {
+      console.log(`[Setup] Pre-loading Next Match: ${nextScheduledMatch.home} vs ${nextScheduledMatch.away} (${nextScheduledMatch.date})`);
+      // Warning: Only clear if it's a completely different match and NOT live
+      const isLive = currentMeta.teamA && !currentMeta.predictionsPaused; // simplified
+      if (!isLive) {
+        await db.ref(`rooms/${ROOM}/innings_history`).remove();
+        await db.ref(`rooms/${ROOM}/predictions`).remove();
+        await db.ref(`rooms/${ROOM}/meta`).update({
+          matchTitle: nextScheduledMatch.titleStr,
+          teamA: nextScheduledMatch.home,
+          teamB: nextScheduledMatch.away,
+          disableScoreA: false,
+          disableScoreB: false,
+          secondInnings: false,
+          predictionsPaused: false,
+          updatedAt: admin.database.ServerValue.TIMESTAMP
+        });
+      }
+    }
+  }
+
   if (!todaysMatches.length) {
-    console.log(`No match found for today (${todayStr}). Exiting.`);
+    console.log(`No match found for today (${todayStr}). Next match setup check complete. Exiting.`);
     process.exit(0);
   }
 
@@ -501,6 +542,29 @@ const runMonitor = async () => {
     } else {
       console.log(`[Double-Header] Match 1 (${todaysMatches[0].home}) is active or not yet started. Beginning with Match 1.`);
     }
+  }
+
+  // --- INITIAL ROOM SETUP (Pre-Match) ---
+  // This was moved up before the loop to handle tomorrow's matches as well.
+  // We keep a small sanity check here to ensure the loop target is reflected in meta.
+  const initialMetaSnap = await db.ref(`rooms/${ROOM}/meta`).once("value");
+  const initialMeta = initialMetaSnap.val() || {};
+  const firstTarget = todaysMatches[targetMatchIdx];
+  
+  if (firstTarget && (!isTeamMatch(initialMeta.teamA, firstTarget.home) || !isTeamMatch(initialMeta.teamB, firstTarget.away))) {
+    console.log(`[Setup] Room is on a different match. Initializing Match: ${firstTarget.home} vs ${firstTarget.away}`);
+    await db.ref(`rooms/${ROOM}/innings_history`).remove();
+    await db.ref(`rooms/${ROOM}/predictions`).remove();
+    await db.ref(`rooms/${ROOM}/meta`).update({
+      matchTitle: firstTarget.titleStr,
+      teamA: firstTarget.home,
+      teamB: firstTarget.away,
+      disableScoreA: false,
+      disableScoreB: false,
+      secondInnings: false,
+      predictionsPaused: false,
+      updatedAt: admin.database.ServerValue.TIMESTAMP
+    });
   }
 
   let targetMatch = todaysMatches[targetMatchIdx];
@@ -599,8 +663,8 @@ const runMonitor = async () => {
             disableScoreA = true; // Team B batting, hide A
           }
 
-          await db.ref(`rooms/${ROOM}/innings_history`).remove();
-          await db.ref(`rooms/${ROOM}/predictions`).remove();
+          // [CRITICAL] We no longer clear predictions here to preserve pre-toss entries.
+          // We only update the meta to lock in the batting team.
           await db.ref(`rooms/${ROOM}/meta`).update({
             matchTitle: targetMatch.titleStr,
             teamA: targetMatch.home,
@@ -610,6 +674,20 @@ const runMonitor = async () => {
             secondInnings: false,
             predictionsPaused: false
           });
+
+          // Trash the unused scores for any pre-toss predictions as per user request
+          const predSnap = await db.ref(`rooms/${ROOM}/predictions`).once("value");
+          const preds = predSnap.val() || {};
+          const updates = {};
+          for (const pid in preds) {
+            if (disableScoreA && preds[pid].scoreA !== undefined) updates[`${pid}/scoreA`] = null;
+            if (disableScoreB && preds[pid].scoreB !== undefined) updates[`${pid}/scoreB`] = null;
+          }
+          if (Object.keys(updates).length > 0) {
+            await db.ref(`rooms/${ROOM}/predictions`).update(updates);
+            console.log(`[Toss] Trashed irrelevant scores for ${Object.keys(updates).length} predictions.`);
+          }
+
           isTossConfirmed = true;
           predictionsOpenedAt = Date.now();
           console.log(`
@@ -624,7 +702,7 @@ const runMonitor = async () => {
           // --- DISCORD: 1st Innings Predictions Open ---
           const roomUrl = `https://overlaychat-6f3c1.web.app/host.html?room=${ROOM}`;
           await sendDiscordNotification(
-            `@Cricket Predictions 🏏 **Toss is in! Predictions are now OPEN for the 1st Innings!**`,
+            `<@&${CRICKET_ROLE_ID}> 🏏 **Toss is in! Predictions are now OPEN for the 1st Innings!**`,
             {
               title: `${targetMatch.home} vs ${targetMatch.away}`,
               description: `**${tossWinner}** won the toss and chose to **${tossChoice}**.\n` +
@@ -727,7 +805,7 @@ const runMonitor = async () => {
               // --- DISCORD: 2nd Innings Predictions Open ---
               const roomUrl2 = `https://overlaychat-6f3c1.web.app/host.html?room=${ROOM}`;
               await sendDiscordNotification(
-                `@Cricket Predictions 🏏 **Innings Break! Predictions are now OPEN for the 2nd Innings!**`,
+                `<@&${CRICKET_ROLE_ID}> 🏏 **Innings Break! Predictions are now OPEN for the 2nd Innings!**`,
                 {
                   title: `${targetMatch.home} vs ${targetMatch.away} — 2nd Innings`,
                   description: `**${chasingTeam}** is chasing **${s1 ? s1.r + 1 : '---'}** off ${battingTeamFull}.\n\n` +
@@ -901,7 +979,34 @@ ${top3Lines}
 
               // Note: Season Leaderboard update takes a bit safely done on next dashboard load, 
               // but we could technically run a sync here.
-              console.log("Match fully resolved and successfully archived! Awaiting transition to Match 2.");
+              console.log("Match fully resolved and successfully archived! Awaiting transition to Next Match.");
+              
+              const nextIdx = targetMatchIdx + 1;
+              let nextToLoad = null;
+              if (nextIdx < todaysMatches.length) {
+                nextToLoad = todaysMatches[nextIdx];
+              } else {
+                // Find next match tomorrow or later from main schedule
+                const historySnap2 = await db.ref(`rooms/${ROOM}/history`).once("value");
+                const hKeys = Object.keys(historySnap2.val() || {});
+                nextToLoad = schedule.find(m => !hKeys.includes(m.matchNo));
+              }
+
+              if (nextToLoad) {
+                console.log(`[Transition] Pre-loading Match: ${nextToLoad.home} vs ${nextToLoad.away}`);
+                await db.ref(`rooms/${ROOM}/innings_history`).remove();
+                await db.ref(`rooms/${ROOM}/predictions`).remove();
+                await db.ref(`rooms/${ROOM}/meta`).update({
+                  matchTitle: nextToLoad.titleStr,
+                  teamA: nextToLoad.home,
+                  teamB: nextToLoad.away,
+                  disableScoreA: false,
+                  disableScoreB: false,
+                  secondInnings: false,
+                  predictionsPaused: false,
+                  updatedAt: admin.database.ServerValue.TIMESTAMP
+                });
+              }
               break;
             }
           }

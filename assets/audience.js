@@ -209,9 +209,11 @@ const renderWinnerOptions = (meta = {}) => {
 
 const updateInningsLabels = () => {
   const winner = (predictedWinnerInput.value || "").toString().trim().toLowerCase();
-  const teamA = (currentMeta.teamA || "Home Team").toString().trim();
-  const teamB = (currentMeta.teamB || "Away Team").toString().trim();
+  const teamA = (currentMeta.teamA || "").toString().trim();
+  const teamB = (currentMeta.teamB || "").toString().trim();
   const is2ndInnings = Boolean(currentMeta.secondInnings);
+  
+  const isPreToss = teamA && teamB && !is2ndInnings && !currentMeta.disableScoreA && !currentMeta.disableScoreB;
   
   // Infer chasing team:
   // If 2nd innings is ON, the team that is NOT disabled is currently batting (chasing)
@@ -240,13 +242,18 @@ const updateInningsLabels = () => {
     const isOversMode = is2ndInnings && isChaser && isChasingWinner;
     
     // Requirement: Hide score field if disabled by executive
-    const isFinished = Boolean(currentMeta.disableScoreA);
-    labelScoreA.parentElement.classList.toggle("hidden", isFinished);
+    const isDisabled = Boolean(currentMeta.disableScoreA);
+    labelScoreA.parentElement.classList.toggle("hidden", isDisabled);
     // Also disable + clear hidden inputs so residual values don't get sent to Firebase
-    scoreAInput.disabled = isFinished;
-    if (isFinished) scoreAInput.value = "";
+    scoreAInput.disabled = isDisabled;
+    if (isDisabled) scoreAInput.value = "";
 
-    labelScoreA.textContent = isOversMode ? `${teamA} Overs` : `${teamA} Score`;
+    if (isPreToss) {
+      labelScoreA.textContent = `Predict if ${teamA} bats first`;
+    } else {
+      labelScoreA.textContent = isOversMode ? `${teamA} Overs` : `${teamA} Score`;
+    }
+    
     // If it's the 2nd innings, allow decimals for both fields to be safe
     scoreAInput.step = is2ndInnings ? "any" : "1";
     scoreAInput.placeholder = isOversMode ? "e.g. 18.2" : "0";
@@ -257,13 +264,18 @@ const updateInningsLabels = () => {
     const isOversMode = is2ndInnings && isChaser && isChasingWinner;
 
     // Requirement: Hide score field if disabled by executive
-    const isFinished = Boolean(currentMeta.disableScoreB);
-    labelScoreB.parentElement.classList.toggle("hidden", isFinished);
+    const isDisabled = Boolean(currentMeta.disableScoreB);
+    labelScoreB.parentElement.classList.toggle("hidden", isDisabled);
     // Also disable + clear hidden inputs so residual values don't get sent to Firebase
-    scoreBInput.disabled = isFinished;
-    if (isFinished) scoreBInput.value = "";
+    scoreBInput.disabled = isDisabled;
+    if (isDisabled) scoreBInput.value = "";
 
-    labelScoreB.textContent = isOversMode ? `${teamB} Overs` : `${teamB} Score`;
+    if (isPreToss) {
+      labelScoreB.textContent = `Predict if ${teamB} bats first`;
+    } else {
+      labelScoreB.textContent = isOversMode ? `${teamB} Overs` : `${teamB} Score`;
+    }
+    
     // If it's the 2nd innings, allow decimals for both fields to be safe
     scoreBInput.step = is2ndInnings ? "any" : "1";
     scoreBInput.placeholder = isOversMode ? "e.g. 18.2" : "0";
@@ -854,16 +866,20 @@ backToDailyBtn?.addEventListener("click", () => {
 
 const renderHistoryList = () => {
   const isMatchActive = Boolean(currentMeta.matchTitle);
+  const isPreToss = !currentMeta.secondInnings && !currentMeta.disableScoreA && !currentMeta.disableScoreB;
   const showLiveGame = isMatchActive;
 
   let html = "";
 
   // Insert Live Game card at the top if 1st INN is unresolved
   if (showLiveGame) {
+    const statusLabel = isPreToss ? "Upcoming" : "Live Now";
+    const statusColor = isPreToss ? "var(--system-orange)" : "var(--system-blue)";
+    
     html += `
-      <div class="history-card" style="border-color: var(--system-blue);" data-match="live">
+      <div class="history-card" style="border-color: ${statusColor};" data-match="live">
         <div class="hcard-left">
-          <span class="hcard-date" style="color: var(--system-blue);">Live Now</span>
+          <span class="hcard-date" style="color: ${statusColor};">${statusLabel}</span>
           <span class="hcard-title">${escapeHtml(currentMeta.matchTitle)}</span>
         </div>
         <i class="fa-solid fa-chevron-right hcard-arrow"></i>
@@ -973,6 +989,8 @@ const renderMatchDetails = (matchId) => {
         p1Winner,
         p1Guess,
         p1Score,
+        p1ScoreA: pActive.scoreA, // Added for pre-toss dual display
+        p1ScoreB: pActive.scoreB, // Added for pre-toss dual display
         p2Winner,
         p2Guess,
         p2Score,
@@ -1077,7 +1095,25 @@ const renderMatchDetails = (matchId) => {
       let p2Str = "-";
 
       if (matchId === "live") {
-        const p1Info = `${row.p1Winner ? escapeHtml(row.p1Winner.substring(0, 3).toUpperCase()) : ''} ${row.p1Guess}`;
+        const isPreToss = !currentMeta.secondInnings && !currentMeta.disableScoreA && !currentMeta.disableScoreB;
+        let p1Info = "";
+
+        if (isPreToss && row.p1ScoreA !== undefined && row.p1ScoreB !== undefined) {
+          // Format: [WINNER] [SCORE_A/SCORE_B] [TEAM_A/TEAM_B]
+          const winnerStr = row.p1Winner ? escapeHtml(row.p1Winner.substring(0, 3).toUpperCase()) : "";
+          const teamAStr = currentMeta.teamA ? escapeHtml(currentMeta.teamA.substring(0, 3).toUpperCase()) : "A";
+          const teamBStr = currentMeta.teamB ? escapeHtml(currentMeta.teamB.substring(0, 3).toUpperCase()) : "B";
+          p1Info = `
+            <div style="line-height: 1.2; margin: 4px 0;">
+               <div style="color: var(--system-blue); font-weight: 700; font-size: 0.8rem; text-transform: uppercase; margin-bottom: 2px;">🏆 ${winnerStr} Win</div>
+               <div style="font-size: 0.85rem;"><span style="opacity: 0.7;">If ${teamAStr} bats:</span> <b>${row.p1ScoreA}</b></div>
+               <div style="font-size: 0.85rem;"><span style="opacity: 0.7;">If ${teamBStr} bats:</span> <b>${row.p1ScoreB}</b></div>
+             </div>
+           `;
+        } else {
+          p1Info = `${row.p1Winner ? escapeHtml(row.p1Winner.substring(0, 3).toUpperCase()) : ''} ${row.p1Guess}`;
+        }
+
         p1Str = row.p1Score === "Live" 
            ? p1Info 
            : (row.p1Score !== "-" ? `${p1Info} <br><span class="dim">${row.p1Score} pts</span>` : "-");

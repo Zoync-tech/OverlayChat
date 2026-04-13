@@ -176,22 +176,80 @@ const scrapeCricbuzzMatch = async (teamA, teamB, matchPath = null) => {
 
     // 1. If no path, find it from the live scores page
     if (!path) {
+      // Cricbuzz now uses Next.js SSR — match data is embedded as JSON in __next_f script tags,
+      // not as <a href> links. We parse the JSON payload to find matchId + team abbreviations.
       console.log(`[Scraper] Searching for match: ${teamA} vs ${teamB}...`);
       const liveHtml = await fetchUrl('https://www.cricbuzz.com/cricket-match/live-scores');
-      const matchRegex = /href="(\/live-cricket-scores\/(\d+)\/([^"]+))"/g;
       const lowerA = teamA.toLowerCase();
       const lowerB = teamB.toLowerCase();
 
-      let m;
-      while ((m = matchRegex.exec(liveHtml)) !== null) {
-        if (m[3].includes(lowerA) || m[3].includes(lowerB)) {
-          // Check if BOTH teams are in the slug or description
-          const context = liveHtml.slice(m.index - 500, m.index + 500);
-          if (context.toLowerCase().includes(lowerA) && context.toLowerCase().includes(lowerB)) {
-            path = m[1];
+      // Extract all __next_f JSON chunks and concatenate them
+      const nextFChunks = [];
+      const nextFRegex = /self\.__next_f\.push\(\[1,"([\s\S]*?)"\]\)/g;
+      let nfm;
+      while ((nfm = nextFRegex.exec(liveHtml)) !== null) {
+        try { nextFChunks.push(JSON.parse('"' + nfm[1] + '"')); } catch (e) { nextFChunks.push(nfm[1]); }
+      }
+      const nextFStr = nextFChunks.join('');
+
+      // Strategy 1: Find matchId by matching teamSName pairs in the JSON
+      // Pattern: "teamSName":"SRH" ... "teamSName":"RR" (within ~1000 chars) alongside a matchId
+      const matchIdRegex = /"matchId":(\d+)[^}]{0,2000}?"teamSName":"([A-Z]+)"[^}]{0,1000}?"teamSName":"([A-Z]+)"/g;
+      let jm;
+      let foundMatchId = null;
+      while ((jm = matchIdRegex.exec(nextFStr)) !== null) {
+        const t1 = jm[2].toLowerCase();
+        const t2 = jm[3].toLowerCase();
+        if ((isTeamMatch(t1, teamA) && isTeamMatch(t2, teamB)) ||
+            (isTeamMatch(t1, teamB) && isTeamMatch(t2, teamA)) ||
+            t1 === lowerA || t1 === lowerB || t2 === lowerA || t2 === lowerB) {
+          // Double-check the nearby context includes both teams
+          const ctx = nextFStr.slice(jm.index, jm.index + 800);
+          if ((ctx.toLowerCase().includes(lowerA) || ctx.includes(teamA)) &&
+              (ctx.toLowerCase().includes(lowerB) || ctx.includes(teamB))) {
+            foundMatchId = jm[1];
+            console.log(`[Scraper] Strategy 1: Found matchId=${foundMatchId} for ${teamA} vs ${teamB}`);
             break;
           }
         }
+      }
+
+      // Strategy 2: Search for matchId near team name strings  
+      if (!foundMatchId) {
+        const teamNameA = IPL_TEAM_MAP[teamA] || teamA;
+        const teamNameB = IPL_TEAM_MAP[teamB] || teamB;
+        const escapedA = teamNameA.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const escapedB = teamNameB.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const nameRegex = new RegExp(`"matchId":(\\d+)[\\s\\S]{0,3000}?${escapedA}[\\s\\S]{0,1000}?${escapedB}`, 'i');
+        const nameMatch = nextFStr.match(nameRegex);
+        if (nameMatch) {
+          foundMatchId = nameMatch[1];
+          console.log(`[Scraper] Strategy 2: Found matchId=${foundMatchId} for ${teamA} vs ${teamB}`);
+        }
+      }
+
+      // Strategy 3 (legacy): Fallback to old href-based detection (for non-Next.js pages)
+      if (!foundMatchId) {
+        const hrefRegex = /href="(\/live-cricket-scores\/(\d+)\/([^"]+))"/g;
+        let m2;
+        while ((m2 = hrefRegex.exec(liveHtml)) !== null) {
+          if (m2[3].includes(lowerA) || m2[3].includes(lowerB)) {
+            const context = liveHtml.slice(m2.index - 500, m2.index + 500);
+            if (context.toLowerCase().includes(lowerA) && context.toLowerCase().includes(lowerB)) {
+              path = m2[1];
+              console.log(`[Scraper] Strategy 3 (legacy href): Found path ${path}`);
+              break;
+            }
+          }
+        }
+      }
+
+      // Build path from matchId if found via JSON strategies
+      if (!path && foundMatchId) {
+        const slugA = lowerA.replace(/\s+/g, '-');
+        const slugB = lowerB.replace(/\s+/g, '-');
+        path = `/live-cricket-scores/${foundMatchId}/${slugA}-vs-${slugB}-ipl-2026`;
+        console.log(`[Scraper] Constructed path: ${path}`);
       }
     }
 

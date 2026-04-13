@@ -18,6 +18,48 @@ console.warn = (...args) => { process.stderr.write(`[${getTimestamp()}] ` + util
 
 // --- HELPERS ---
 
+/**
+ * Sends a rich embed notification to a Discord channel via Webhook.
+ * Requires DISCORD_WEBHOOK_URL to be set in environment / GitHub secrets.
+ * Silently skips if not configured.
+ */
+const sendDiscordNotification = (content, embed) => {
+  const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
+  if (!webhookUrl) {
+    console.warn('[Discord] DISCORD_WEBHOOK_URL not set. Skipping notification.');
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    try {
+      const url = new URL(webhookUrl);
+      const body = JSON.stringify({ content, embeds: embed ? [embed] : [] });
+      const options = {
+        hostname: url.hostname,
+        path: url.pathname + url.search,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+      };
+      const req = https.request(options, (res) => {
+        res.on('data', () => {});
+        res.on('end', () => {
+          console.log(`[Discord] Notification sent (HTTP ${res.statusCode}).`);
+          resolve();
+        });
+      });
+      req.on('error', (err) => {
+        console.error(`[Discord] Failed to send notification: ${err.message}`);
+        resolve(); // Non-fatal
+      });
+      req.write(body);
+      req.end();
+    } catch (err) {
+      console.error(`[Discord] Notification error: ${err.message}`);
+      resolve();
+    }
+  });
+};
+
+
 const fetchUrl = (url) =>
   new Promise((resolve, reject) => {
     // Add cache buster to URL
@@ -512,6 +554,21 @@ const runMonitor = async () => {
         });
         isTossConfirmed = true;
         predictionsOpenedAt = Date.now();
+
+        // --- DISCORD: 1st Innings Predictions Open ---
+        const roomUrl = `https://overlaychat-6f3c1.web.app/host.html?room=${ROOM}`;
+        await sendDiscordNotification(
+          `🏏 **Toss is in! Predictions are now OPEN for the 1st Innings!**`,
+          {
+            title: `${targetMatch.home} vs ${targetMatch.away}`,
+            description: `**${tossWinner}** won the toss and chose to **${tossChoice}**.\n` +
+                         `**${battingTeamFull}** will bat first.\n\n` +
+                         `🔗 [Join & Predict Here](${roomUrl})`,
+            color: 0x00c853,
+            footer: { text: `Match: ${targetMatch.titleStr}` },
+            timestamp: new Date().toISOString()
+          }
+        );
       }
 
       if (isTossConfirmed && score && score.length > 0) {
@@ -562,6 +619,20 @@ const runMonitor = async () => {
                 disableScoreB: !meta.disableScoreB
             });
             firstInningsResolved = true;
+
+            // --- DISCORD: 2nd Innings Predictions Open ---
+            const roomUrl2 = `https://overlaychat-6f3c1.web.app/host.html?room=${ROOM}`;
+            await sendDiscordNotification(
+              `🏏 **Innings Break! Predictions are now OPEN for the 2nd Innings!**`,
+              {
+                title: `${targetMatch.home} vs ${targetMatch.away} — 2nd Innings`,
+                description: `**${chasingTeam}** is chasing **${s1 ? s1.r + 1 : '---'}** off ${battingTeamFull}.\n\n` +
+                             `🔗 [Join & Predict Here](${roomUrl2})`,
+                color: 0xff6d00,
+                footer: { text: `Match: ${targetMatch.titleStr}` },
+                timestamp: new Date().toISOString()
+              }
+            );
           }
         }
         // 3. SECOND INNINGS

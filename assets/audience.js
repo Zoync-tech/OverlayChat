@@ -135,11 +135,14 @@ const syncPredictionAccess = (meta = {}) => {
   if (predictionLocked && !isEditingReprediction) {
     setPredictionInputsDisabled(true, meta);
     
-    // Only allow editing if reprediction is enabled (default true unless explicitly false)
+    // Only allow editing if reprediction is enabled
     const canRepredict = meta.allowRepredictions !== false;
     predictionSubmitButton.disabled = !canRepredict;
     predictionSubmitButton.textContent = canRepredict ? "Update prediction" : "Prediction locked";
-    setStatus(predictionStatus, "Prediction locked", "neutral");
+    
+    // UI Improvement: Don't call it "Locked" if they can actually update it
+    const statusText = canRepredict ? "Submission recorded" : "Prediction locked";
+    setStatus(predictionStatus, statusText, "neutral");
     return;
   }
 
@@ -383,9 +386,16 @@ if (!roomSelected) {
     onValue(roomRef(roomId, "meta"), (snapshot) => {
       const meta = snapshot.val() || {};
       currentMeta = meta;
+      
+      // Fix potential spelling mismatch between audience logic and DB
+      if (meta.allowReprediction !== undefined) {
+        meta.allowRepredictions = meta.allowReprediction;
+      }
+      
       applyTeamTheme(meta.teamA, meta.teamB);
       renderWinnerOptions(meta);
       updateInningsLabels();
+      syncPredictionAccess(meta);
     });
 
     // --- Season Leaderboard Listener ---

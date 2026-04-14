@@ -1054,8 +1054,8 @@ ${top3Lines}
             const overNum = parseFloat(currentOver);
             if (overNum < 0.1) {
               delay = 3 * 60 * 1000; // Poll 3 mins until first ball
-            } else if (overNum >= 0.1 && overNum < 3.0) {
-              delay = 1 * 60 * 1000; // Fast poll (1 min) for the first 3 overs for penalty accuracy
+            } else if (!isFirstInningsLocked || overNum < 3.0) {
+              delay = 1 * 60 * 1000; // Fast poll (1 min) until 1st innings is locked
             } else if (overNum >= 3.0 && overNum < 18.0) {
               delay = 10 * 60 * 1000; // Slow poll (10 mins) for middle overs
             } else if (overNum >= 18.0) {
@@ -1073,8 +1073,8 @@ ${top3Lines}
               const target2 = s1 ? s1.r + 1 : null;
               const runsNeeded = target2 !== null ? target2 - s2.r : Infinity;
               
-              if (runsNeeded <= 15 || overNum >= 18.0) {
-                delay = 1 * 60 * 1000;
+              if (runsNeeded <= 15 || overNum >= 18.0 || !isSecondInningsLocked || overNum < 3.0) {
+                delay = 1 * 60 * 1000; // Fast poll until locked or near end
               } else if (overNum >= 3.0 && overNum < 18.0) {
                 delay = 10 * 60 * 1000;
               }

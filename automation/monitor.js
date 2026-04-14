@@ -563,6 +563,7 @@ const runMonitor = async () => {
       disableScoreB: false,
       secondInnings: false,
       predictionsPaused: false,
+      currentOver: "0.0",
       updatedAt: admin.database.ServerValue.TIMESTAMP
     });
   }

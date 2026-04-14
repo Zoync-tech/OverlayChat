@@ -634,9 +634,9 @@ const runMonitor = async () => {
 
         let { tossWinner, tossChoice, matchWinner, score, status } = res.data;
 
-        const isInningsBreak = status.toLowerCase().includes("innings break");
-        const s1 = score && score.find(s => isTeamMatch(s.inning, battingTeamFull));
-        const s2 = score && score.find(s => isTeamMatch(s.inning, chasingTeam));
+        let isInningsBreak = status.toLowerCase().includes("innings break");
+        let s1 = score && score.find(s => isTeamMatch(s.inning, battingTeamFull));
+        let s2 = score && score.find(s => isTeamMatch(s.inning, chasingTeam));
 
         let rawOver = 0;
         if (s2) rawOver = parseFloat(s2.o || 0);
@@ -778,7 +778,7 @@ const runMonitor = async () => {
               console.log(`[Grace] 3.0 Overs reached but grace period active. ${Math.round((15 * 60 * 1000 - graceElapsed) / 1000 / 60)} min(s) remaining.`);
             }
 
-            const isInningsBreak = status.toLowerCase().includes("innings break") || s2;
+            isInningsBreak = status.toLowerCase().includes("innings break") || s2;
             if (s1.o >= 19.6 || s1.w >= 10 || isInningsBreak) {
               const predSnap = await db.ref(`rooms/${ROOM}/predictions`).once("value");
               const preds = predSnap.val() || {};

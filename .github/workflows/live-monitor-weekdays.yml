@@ -2,8 +2,8 @@ name: Live Match Automation Bot (Weekdays)
 
 on:
   schedule:
-    # 5:30 PM IST (12:00 UTC) - Weekdays
-    - cron: '0 12 * * 1-5'
+    # 5:00 PM IST (11:30 UTC) - Weekdays
+    - cron: '30 11 * * 1-5'
 
   # Allow manual triggering from the GitHub Actions UI just in case
   workflow_dispatch:

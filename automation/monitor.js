@@ -729,7 +729,7 @@ const runMonitor = async () => {
 ============================================================`);
 
           // --- DISCORD: 1st Innings Predictions Open ---
-          const roomUrl = `https://overlaychat-6f3c1.web.app/host.html?room=${ROOM}`;
+          const roomUrl = `https://vrccim.com/?r=${ROOM}`;
           await sendDiscordNotification(
             `<@&${CRICKET_ROLE_ID}> 🏏 **Toss is in! Predictions are now OPEN for the 1st Innings!**`,
             {
@@ -832,7 +832,7 @@ const runMonitor = async () => {
               );
 
               // --- DISCORD: 2nd Innings Predictions Open ---
-              const roomUrl2 = `https://overlaychat-6f3c1.web.app/host.html?room=${ROOM}`;
+              const roomUrl2 = `https://vrccim.com/?r=${ROOM}`;
               await sendDiscordNotification(
                 `<@&${CRICKET_ROLE_ID}> 🏏 **Innings Break! Predictions are now OPEN for the 2nd Innings!**`,
                 {

@@ -28,15 +28,14 @@ const calculateInnings1Points = (prediction, actual, meta) => {
 
   const diff = Math.abs(actual - predScore);
   if (diff === 0) {
-    const totalPoints = Math.max(0, 200 - (prediction.penalty || 0));
-    return { points: totalPoints, diff, rawDiff: 0, isExact: true, isNear5: true, isNear10: true, guess: predScore, mode: "Score", penaltyApplied: (prediction.penalty || 0) };
+    return { points: 200, diff, rawDiff: 0, isExact: true, isNear5: true, isNear10: true, guess: predScore, mode: "Score" };
   }
 
   const base = Math.round(Math.max(0, 120 - (diff * 1.2)));
   const near5 = diff <= 5 ? 20 : 0;
   const near10 = diff <= 10 ? 10 : 0;
 
-  const totalPoints = Math.max(0, (base + near5 + near10) - (prediction.penalty || 0));
+  const totalPoints = Math.max(0, base + near5 + near10);
   
   return {
     points: totalPoints,
@@ -46,8 +45,7 @@ const calculateInnings1Points = (prediction, actual, meta) => {
     isNear5: diff <= 5,
     isNear10: diff <= 10,
     guess: predScore,
-    mode: "Score",
-    penaltyApplied: (prediction.penalty || 0)
+    mode: "Score"
   };
 };
 
@@ -86,8 +84,7 @@ const calculateInnings2Points = (prediction, actualWinner, actualResult, meta, i
     const exactBonus = (diff === 0) ? 70 : 0;
 
     points += accuracy + near3Bonus + rangeBonus + exactBonus;
-    const finalPoints = Math.max(0, points - (prediction.penalty || 0));
-    return { points: finalPoints, diff: ballsToOversDisplay(diff), rawDiff: diff, guess: predVal, isExact: diff === 0, mode: "Overs", penaltyApplied: (prediction.penalty || 0) };
+    return { points: Math.max(0, points), diff: ballsToOversDisplay(diff), rawDiff: diff, guess: predVal, isExact: diff === 0, mode: "Overs" };
   } else {
     // Defending/Score Scenario
     const diff = Math.abs(Number(actualResult) - Number(predVal || 0));
@@ -97,8 +94,7 @@ const calculateInnings2Points = (prediction, actualWinner, actualResult, meta, i
     const exactBonus = (diff === 0) ? 70 : 0;
 
     points += base + rangeBonusTier1 + rangeBonusTier2 + exactBonus;
-    const finalPoints = Math.max(0, points - (prediction.penalty || 0));
-    return { points: finalPoints, diff: `${diff} runs`, rawDiff: diff, guess: predVal, isExact: diff === 0, mode: "Score", penaltyApplied: (prediction.penalty || 0) };
+    return { points: Math.max(0, points), diff: `${diff} runs`, rawDiff: diff, guess: predVal, isExact: diff === 0, mode: "Score" };
   }
 };
 
@@ -116,9 +112,9 @@ const calculateMatchFinals = (h1, h2) => {
 
       const rec = combinedMap.get(key);
       if (isInnings1) {
-        rec.p1 = { pts: p.points || 0, winner: p.predictedWinner || "", guess: p.guess || "---" };
+        rec.p1 = { pts: p.points || 0, winner: p.predictedWinner || "", guess: p.guess || "---", penalty: p.penalty || 0 };
       } else {
-        rec.p2 = { pts: p.points || 0, winner: p.predictedWinner || "", guess: p.guess || "---" };
+        rec.p2 = { pts: p.points || 0, winner: p.predictedWinner || "", guess: p.guess || "---", penalty: p.penalty || 0 };
       }
     });
   };
@@ -127,10 +123,15 @@ const calculateMatchFinals = (h1, h2) => {
   mergeRecords(h2, false);
 
   return Array.from(combinedMap.values()).map(rec => {
-    let penalty = 0;
+    let mismatchPenalty = 0;
     if (rec.p1.winner && rec.p2.winner && rec.p1.winner.toLowerCase() !== rec.p2.winner.toLowerCase()) {
-      penalty = -20;
+      mismatchPenalty = 20;
     }
+
+    // rec.p1 and rec.p2 should contain the raw penalties if we want to extract the total match penalty
+    // Usually the P2 prediction contains the most up-to-date stacked penalty
+    const matchPenalty = Number(rec.p2.penalty || rec.p1.penalty || 0);
+    const totalPenalty = matchPenalty + mismatchPenalty;
 
     return {
       name: rec.displayName,
@@ -140,8 +141,8 @@ const calculateMatchFinals = (h1, h2) => {
       p2Score: rec.p2.pts,
       p2Winner: rec.p2.winner,
       p2Guess: rec.p2.guess,
-      penalty,
-      total: Math.max(0, rec.p1.pts + rec.p2.pts + penalty)
+      penalty: totalPenalty,
+      total: Math.max(0, rec.p1.pts + rec.p2.pts - totalPenalty)
     };
   });
 };

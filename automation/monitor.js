@@ -1048,29 +1048,31 @@ ${top3Lines}
           s2 = score && score.find(s => isTeamMatch(s.inning, chasingTeam));
 
           if (!firstInningsResolved && s1) {
-            if (s1.o < 0.1) {
+            const overNum = parseFloat(currentOver);
+            if (overNum < 0.1) {
               delay = 3 * 60 * 1000; // Poll 3 mins until first ball
-            } else if (s1.o >= 0.1 && s1.o < 2.6) {
+            } else if (overNum >= 0.1 && overNum < 3.0) {
               delay = 1 * 60 * 1000; // Fast poll (1 min) for the first 3 overs for penalty accuracy
-            } else if (s1.o >= 2.6 && s1.o < 18.0) {
+            } else if (overNum >= 3.0 && overNum < 18.0) {
               delay = 10 * 60 * 1000; // Slow poll (10 mins) for middle overs
-            } else if (s1.o >= 18.0) {
+            } else if (overNum >= 18.0) {
               delay = 1 * 60 * 1000; // Fast poll (1 min) for death overs
             }
           }
           else if (firstInningsResolved && s2) {
-            if (s2.o < 0.1) {
+            const overNum = parseFloat(currentOver);
+            if (overNum < 0.1) {
               delay = 3 * 60 * 1000; // Wait 3 mins for 2nd innings start
-            } else if (s2.o >= 0.1 && s2.o < 2.6) {
+            } else if (overNum >= 0.1 && overNum < 3.0) {
               delay = 1 * 60 * 1000; // Fast poll for start of chase
             } else {
               // In a chase, if the team is within 15 runs of the target, poll every 1 min
               const target2 = s1 ? s1.r + 1 : null;
               const runsNeeded = target2 !== null ? target2 - s2.r : Infinity;
               
-              if (runsNeeded <= 15 || s2.o >= 18.0) {
+              if (runsNeeded <= 15 || overNum >= 18.0) {
                 delay = 1 * 60 * 1000;
-              } else if (s2.o >= 2.6 && s2.o < 18.0) {
+              } else if (overNum >= 3.0 && overNum < 18.0) {
                 delay = 10 * 60 * 1000;
               }
             }

@@ -121,13 +121,12 @@ const setPredictionInputsDisabled = (disabled, meta = {}) => {
   scoreBInput.parentElement.classList.toggle("field-disabled", scoreBDisabled);
 
   predictedWinnerInput.disabled = disabled;
-  predictionSubmitButton.disabled = disabled;
-  predictionForm.classList.toggle("disabled", disabled);
 };
 
 const syncPredictionAccess = (meta = {}) => {
   if (predictionsPaused) {
     setPredictionInputsDisabled(true, meta);
+    predictionSubmitButton.disabled = true;
     predictionSubmitButton.textContent = "Predictions paused";
     setStatus(predictionStatus, "Predictions paused", "danger");
     return;
@@ -135,14 +134,19 @@ const syncPredictionAccess = (meta = {}) => {
 
   if (predictionLocked && !isEditingReprediction) {
     setPredictionInputsDisabled(true, meta);
-    predictionSubmitButton.textContent = "Prediction locked";
+    
+    // Only allow editing if reprediction is enabled (default true unless explicitly false)
+    const canRepredict = meta.allowRepredictions !== false;
+    predictionSubmitButton.disabled = !canRepredict;
+    predictionSubmitButton.textContent = canRepredict ? "Update prediction" : "Prediction locked";
     setStatus(predictionStatus, "Prediction locked", "neutral");
     return;
   }
 
   setPredictionInputsDisabled(false, meta);
+  predictionSubmitButton.disabled = false;
   predictionSubmitButton.textContent = predictionLocked
-    ? (isEditingReprediction ? "Save updated prediction" : "Update prediction")
+    ? "Save updated prediction"
     : "Send prediction";
 };
 
@@ -187,7 +191,6 @@ const renderWinnerOptions = (meta = {}) => {
   }
 
   predictionsPaused = Boolean(meta.predictionsPaused);
-  isEditingReprediction = Boolean(meta.isEditingReprediction);
 
   if (meta.matchTitle) {
     matchBadge.textContent = meta.matchTitle;
@@ -521,7 +524,7 @@ predictionForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
 
   // Handle 'Update' click to toggle edit mode
-  if (predictionLocked && isEditingReprediction && !isEditingReprediction && !predictionsPaused) {
+  if (predictionLocked && !isEditingReprediction && !predictionsPaused) {
     isEditingReprediction = true;
     syncPredictionAccess(currentMeta);
     return;
@@ -538,6 +541,23 @@ predictionForm?.addEventListener("submit", async (event) => {
 
   const name = viewerNameInput.value.trim();
   const predictedWinner = predictedWinnerInput.value.trim();
+  
+  const currentPrediction = activePredictions[clientId];
+  let existingWinner = currentPrediction ? currentPrediction.predictedWinner : "";
+  let existingPenalty = currentPrediction ? (currentPrediction.penalty || 0) : 0;
+
+  // Inheritance: If no current prediction, pull previous penalty/winner from 1st innings archive
+  if (!currentPrediction) {
+    const h1Entry = Object.values(liveHist1st).find(p => 
+      p.name && p.name.trim().toLowerCase() === name.trim().toLowerCase()
+    );
+    if (h1Entry) {
+      existingWinner = h1Entry.predictedWinner || "";
+      existingPenalty = Number(h1Entry.penalty || 0);
+      console.log(`[Penalty-Sync] Inheriting penalty of -${existingPenalty} from 1st innings history.`);
+    }
+  }
+
   const lowWinner = predictedWinner.toLowerCase();
   const lowChaser = (currentMeta.chasingTeam || "").toLowerCase();
 
@@ -606,7 +626,7 @@ predictionForm?.addEventListener("submit", async (event) => {
   }
 
   if (currentMeta.isInningsBreak) {
-    addedPenalty = 0; // Encourages participation in 2nd innings
+    addedPenalty = 0; // No late entry penalty during break
   } else {
     // 1. Entry/Update Over penalty
     if (!effectiveUpdate) {
@@ -618,12 +638,12 @@ predictionForm?.addEventListener("submit", async (event) => {
       else if (over > 1.0 && over <= 2.0) { addedPenalty = 15; breakdown.push("-15 Update Penalty (2nd Over)"); }
       else if (over > 2.0 && over <= 3.0) { addedPenalty = 30; breakdown.push("-30 Update Penalty (3rd Over)"); }
     }
+  }
 
-    // 2. Winner Change Penalty
-    if (useExistingWinner && predictedWinner !== useExistingWinner) {
-      addedPenalty += 20;
-      breakdown.push("-20 Winner Change Penalty");
-    }
+  // 2. Winner Change Penalty - Active even during innings break
+  if (useExistingWinner && predictedWinner !== useExistingWinner) {
+    addedPenalty += 20;
+    breakdown.push("-20 Winner Change Penalty");
   }
 
   // Final synchronization of existing state (handling both local locks and device jumps)
@@ -1043,16 +1063,6 @@ const renderMatchDetails = (matchId) => {
   if (matchId === "live") {
     const overVal = parseFloat(currentMeta.currentOver || "0");
     const isMatchStarted = overVal > 0 || currentMeta.secondInnings;
-    const isBlind = !isMatchStarted || !predictionLocked;
-
-    if (isBlind) {
-      matchDetailTitle.textContent = currentMeta.matchTitle || "Live Game";
-      matchDetailTitle.dataset.matchId = "live";
-      matchDetailList.innerHTML = `<tr><td colspan="5"><div class="blind-notice"><h3>Predictions are blind</h3><p>${!isMatchStarted ? "Standings will be revealed once the match starts!" : "Make your prediction first to see what others guessed!"}</p></div></td></tr>`;
-      setHidden(dailyView, true);
-      setHidden(matchDetailView, false);
-      return;
-    }
 
     // Show current predictions mapped to a dummy standings object
     matchDetailTitle.textContent = currentMeta.matchTitle || "Live Game";
@@ -1255,14 +1265,32 @@ const renderMatchDetails = (matchId) => {
           p1Info = `${row.p1Winner ? escapeHtml(row.p1Winner.substring(0, 3).toUpperCase()) : ''} ${row.p1Guess}`;
         }
 
-        p1Str = row.p1Score === "Live" 
-           ? p1Info 
-           : (row.p1Score !== "-" ? `${p1Info} <br><span class="dim">${row.p1Score} pts</span>` : "-");
+        const myName = viewerNameInput.value.trim().toLowerCase();
+        const rowName = (row.name || "").trim().toLowerCase();
+        const isMe = myName === rowName && rowName !== "";
+
+        const overVal = parseFloat(currentMeta.currentOver || "0");
+        const isMatchStarted = overVal > 0 || currentMeta.secondInnings;
+
+        const hideP1 = !currentMeta.secondInnings && (!isMatchStarted || !predictionLocked) && !isMe;
+        const hideP2 = currentMeta.secondInnings && !predictionLocked && !isMe;
+
+        if (hideP1 && row.p1Score !== "-") {
+          p1Str = `<span class="dim" style="font-style: italic;"><i class="fa-solid fa-eye-slash" style="margin-right:4px;"></i> Hidden</span>`;
+        } else {
+          p1Str = row.p1Score === "Live" 
+             ? p1Info 
+             : (row.p1Score !== "-" ? `${p1Info} <br><span class="dim">${row.p1Score} pts</span>` : "-");
+        }
 
         const p2Info = `${row.p2Winner ? escapeHtml(row.p2Winner.substring(0, 3).toUpperCase()) : ''} ${row.p2Guess}`;
-        p2Str = row.p2Score === "Live"
-           ? p2Info
-           : (row.p2Score !== "-" ? `${p2Info} <br><span class="dim">${row.p2Score} pts</span>` : "-");
+        if (hideP2 && row.p2Score !== "-") {
+          p2Str = `<span class="dim" style="font-style: italic;"><i class="fa-solid fa-eye-slash" style="margin-right:4px;"></i> Hidden</span>`;
+        } else {
+          p2Str = row.p2Score === "Live"
+             ? p2Info
+             : (row.p2Score !== "-" ? `${p2Info} <br><span class="dim">${row.p2Score} pts</span>` : "-");
+        }
       } else {
         p1Str = `${row.p1Winner ? escapeHtml(row.p1Winner.substring(0, 3).toUpperCase()) : ''} ${row.p1Guess} <br><span class="dim">${row.p1Score} pts</span>`;
         p2Str = `${row.p2Winner ? escapeHtml(row.p2Winner.substring(0, 3).toUpperCase()) : ''} ${row.p2Guess} <br><span class="dim">${row.p2Score} pts</span>`;

@@ -1282,8 +1282,8 @@ const renderMatchDetails = (matchId) => {
         const overVal = parseFloat(currentMeta.currentOver || "0");
         const isMatchStarted = overVal > 0 || currentMeta.secondInnings;
 
-        const hideP1 = !currentMeta.secondInnings && (!isMatchStarted || !predictionLocked) && !isMe;
-        const hideP2 = currentMeta.secondInnings && !predictionLocked && !isMe;
+        const hideP1 = !currentMeta.secondInnings && (!isMatchStarted || !predictionLocked) && !isMe && !currentMeta.predictionsPaused;
+        const hideP2 = currentMeta.secondInnings && !predictionLocked && !isMe && !currentMeta.predictionsPaused;
 
         if (hideP1 && row.p1Score !== "-") {
           p1Str = `<span class="dim" style="font-style: italic;"><i class="fa-solid fa-eye-slash" style="margin-right:4px;"></i> Hidden</span>`;

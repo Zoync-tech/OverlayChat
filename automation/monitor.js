@@ -811,6 +811,8 @@ const runMonitor = async () => {
               // Swap score fields for 2nd innings
               await db.ref(`rooms/${ROOM}/meta`).update({
                 secondInnings: true,
+                currentOver: "0.0",
+                isInningsBreak: true,
                 predictionsPaused: false,
                 disableScoreA: !meta.disableScoreA,
                 disableScoreB: !meta.disableScoreB

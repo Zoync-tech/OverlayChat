@@ -1280,7 +1280,7 @@ const renderMatchDetails = (matchId) => {
         const isMe = myName === rowName && rowName !== "";
 
         const overVal = parseFloat(currentMeta.currentOver || "0");
-        const isBowlingStarted = overVal > 0;
+        const isBowlingStarted = overVal > 0 && !currentMeta.isInningsBreak;
 
         const hideP1 = !currentMeta.secondInnings && (!isBowlingStarted || !predictionLocked) && !isMe && !currentMeta.predictionsPaused;
         const hideP2 = currentMeta.secondInnings && (!isBowlingStarted || !predictionLocked) && !isMe && !currentMeta.predictionsPaused;

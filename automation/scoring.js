@@ -123,15 +123,10 @@ const calculateMatchFinals = (h1, h2) => {
   mergeRecords(h2, false);
 
   return Array.from(combinedMap.values()).map(rec => {
-    let mismatchPenalty = 0;
-    if (rec.p1.winner && rec.p2.winner && rec.p1.winner.toLowerCase() !== rec.p2.winner.toLowerCase()) {
-      mismatchPenalty = 20;
-    }
-
     // rec.p1 and rec.p2 should contain the raw penalties if we want to extract the total match penalty
-    // Usually the P2 prediction contains the most up-to-date stacked penalty
+    // Usually the P2 prediction contains the most up-to-date stacked penalty (including winner change penalties applied by audience.js)
     const matchPenalty = Number(rec.p2.penalty || rec.p1.penalty || 0);
-    const totalPenalty = matchPenalty + mismatchPenalty;
+    const totalPenalty = matchPenalty;
 
     return {
       name: rec.displayName,

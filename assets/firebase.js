@@ -39,9 +39,21 @@ export const getOnce = async (ref) => {
 };
 
 export const savePrediction = async (roomId, clientId, payload) => {
+  const ts = serverTimestamp();
+  
+  // 1. Update the current active prediction
   await set(roomRef(roomId, `predictions/${clientId}`), {
     ...payload,
-    updatedAt: serverTimestamp(),
+    updatedAt: ts,
+  });
+
+  // 2. Append to match-specific audit trail for this user
+  // We use the match title as a sub-folder to keep it organized
+  const matchId = payload.matchId || "unknown_match";
+  const historyRef = roomRef(roomId, `prediction_history/${clientId}/${matchId}`);
+  await set(push(historyRef), {
+    ...payload,
+    loggedAt: ts
   });
 };
 

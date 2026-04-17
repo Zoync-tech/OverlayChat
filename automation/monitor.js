@@ -662,26 +662,37 @@ const runMonitor = async () => {
         let { tossWinner, tossChoice, matchWinner, score, status } = res.data;
 
         let isInningsBreak = status.toLowerCase().includes("innings break");
-        let s1 = score && score.find(s => isTeamMatch(s.inning, battingTeamFull));
-        let s2 = score && score.find(s => isTeamMatch(s.inning, chasingTeam));
+        
+        // Priority Score Extraction: Ensure we find the ACTIVE innings score
+        // We filter scoreList to ONLY include scores from the current match teams
+        const validScores = score && score.filter(s => isTeamMatch(s.inning, targetMatch.home) || isTeamMatch(s.inning, targetMatch.away));
+        
+        let s1 = validScores && validScores.find(s => isTeamMatch(s.inning, battingTeamFull));
+        let s2 = validScores && validScores.find(s => isTeamMatch(s.inning, chasingTeam));
 
         let rawOver = 0;
         if (s2) rawOver = parseFloat(s2.o || 0);
         else if (s1) rawOver = parseFloat(s1.o || 0);
 
-        // Normalize overs: treats x.6 as x+1.0 (e.g., 2.6 becomes 3.0)
+        // Normalize overs: treats x.6 as x+1.0
         let normalizedOver = rawOver;
         const overInt = Math.floor(rawOver);
         const overDec = Math.round((rawOver - overInt) * 10);
-        if (overDec >= 6) {
-          normalizedOver = overInt + 1.0;
-        }
+        if (overDec >= 6) normalizedOver = overInt + 1.0;
         const currentOver = normalizedOver.toFixed(1);
 
-        // Specific detection logging for the first 3 overs
-        if (normalizedOver > 0 && normalizedOver <= 1.0) console.log(`[Penalty-Watch] 1st Over detected (${currentOver})`);
-        else if (normalizedOver > 1.0 && normalizedOver <= 2.0) console.log(`[Penalty-Watch] 2nd Over detected (${currentOver})`);
-        else if (normalizedOver > 2.0 && normalizedOver <= 3.0) console.log(`[Penalty-Watch] 3rd Over detected (${currentOver})`);
+        // --- Over Jump Guard ---
+        // If the over jumps by more than 5.0 overs in a single ping, it's likely a scraper error
+        // unless the match status indicates it's actually finished.
+        const prevOverStr = (await db.ref(`rooms/${ROOM}/meta/currentOver`).once("value")).val() || "0.0";
+        const prevOver = parseFloat(prevOverStr);
+        const isFinishedStatus = status.toLowerCase().includes("won by") || status.toLowerCase().includes("complete") || status.toLowerCase().includes("result");
+        
+        if (!isFinishedStatus && prevOver > 0 && (normalizedOver - prevOver) > 5.0 && normalizedOver > 19.0) {
+          console.warn(`[Guard] Suspicious over jump detected: ${prevOver} -> ${normalizedOver}. Ignoring this ping.`);
+          await sleep(60000); // Wait 1 min and retry
+          continue; 
+        }
 
         await db.ref(`rooms/${ROOM}/meta`).update({
           currentOver,
@@ -689,10 +700,10 @@ const runMonitor = async () => {
           updatedAt: admin.database.ServerValue.TIMESTAMP
         });
 
-        const scoreStr = score && score.length > 0
-          ? score.map(s => `${s.inning}: ${s.r}/${s.w} (${s.o} ov)`).join(" | ")
+        const scoreStr = validScores && validScores.length > 0
+          ? validScores.map(s => `${s.inning}: ${s.r}/${s.w} (${s.o} ov)`).join(" | ")
           : "No score yet";
-        console.log(`[Poll] Status: "${status}" | Over: ${currentOver} (raw: ${rawOver}) | Break: ${isInningsBreak} | Score: [${scoreStr}]`);
+        console.log(`[Poll] Status: "${status}" | Over: ${currentOver} | Break: ${isInningsBreak} | Score: [${scoreStr}]`);
 
         // 1. TOSS
         if (!isTossConfirmed && tossWinner && tossChoice) {

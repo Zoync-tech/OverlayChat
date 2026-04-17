@@ -107,14 +107,14 @@ const calculateMatchFinals = (h1, h2) => {
       const key = rawName.toLowerCase();
 
       if (!combinedMap.has(key)) {
-        combinedMap.set(key, { displayName: rawName, p1: { pts: 0, winner: "", guess: "---" }, p2: { pts: 0, winner: "", guess: "---" } });
+        combinedMap.set(key, { displayName: rawName, p1: { pts: 0, winner: "", guess: "---", penalty: 0, penaltyDetails: "" }, p2: { pts: 0, winner: "", guess: "---", penalty: 0, penaltyDetails: "" } });
       }
 
       const rec = combinedMap.get(key);
       if (isInnings1) {
-        rec.p1 = { pts: p.points || 0, winner: p.predictedWinner || "", guess: p.guess || "---", penalty: p.penalty || 0 };
+        rec.p1 = { pts: p.points || 0, winner: p.predictedWinner || "", guess: p.guess || "---", penalty: p.penalty || 0, penaltyDetails: p.penaltyDetails || "" };
       } else {
-        rec.p2 = { pts: p.points || 0, winner: p.predictedWinner || "", guess: p.guess || "---", penalty: p.penalty || 0 };
+        rec.p2 = { pts: p.points || 0, winner: p.predictedWinner || "", guess: p.guess || "---", penalty: p.penalty || 0, penaltyDetails: p.penaltyDetails || "" };
       }
     });
   };
@@ -137,6 +137,7 @@ const calculateMatchFinals = (h1, h2) => {
       p2Winner: rec.p2.winner,
       p2Guess: rec.p2.guess,
       penalty: totalPenalty,
+      penaltyDetails: rec.p2.penaltyDetails || rec.p1.penaltyDetails || "",
       total: Math.max(0, rec.p1.pts + rec.p2.pts - totalPenalty)
     };
   });

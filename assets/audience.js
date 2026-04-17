@@ -427,10 +427,12 @@ if (!roomSelected) {
         predictedWinnerInput.value = prediction.predictedWinner || "";
         existingWinner = prediction.predictedWinner || "";
         existingPenalty = prediction.penalty || 0;
+        existingPenaltyDetails = prediction.penaltyDetails || "";
         setHidden(restoreSessionBtn, true);
       } else {
         existingWinner = "";
         existingPenalty = 0;
+        existingPenaltyDetails = "";
       }
       syncPredictionAccess(currentMeta);
     });
@@ -456,6 +458,7 @@ if (!roomSelected) {
         isEditingReprediction = false;
         existingWinner = match.predictedWinner || "";
         existingPenalty = match.penalty || 0;
+        existingPenaltyDetails = match.penaltyDetails || "";
 
         // Auto-fill the form
         predictedWinnerInput.value = existingWinner;
@@ -505,7 +508,7 @@ if (!roomSelected) {
       // 2. During match: You are blind until you predict.
       // 3. Innings Break: You are blind for 2nd innings until you predict.
       const overVal = parseFloat(currentMeta.currentOver || "0");
-      const isMatchStarted = overVal > 0 || currentMeta.secondInnings;
+      const isMatchStarted = overVal > 0;
       const isBlind = !isMatchStarted || !predictionLocked;
 
       if (!predictionsPaused && (!predictionLocked || isEditingReprediction)) {
@@ -555,6 +558,7 @@ predictionForm?.addEventListener("submit", async (event) => {
   const currentPrediction = activePredictions[clientId];
   let existingWinner = currentPrediction ? currentPrediction.predictedWinner : "";
   let existingPenalty = currentPrediction ? (currentPrediction.penalty || 0) : 0;
+  let existingPenaltyDetails = currentPrediction ? (currentPrediction.penaltyDetails || "") : "";
 
   // Inheritance: If no current prediction, pull previous penalty/winner from 1st innings archive
   if (!currentPrediction) {
@@ -564,6 +568,7 @@ predictionForm?.addEventListener("submit", async (event) => {
     if (h1Entry) {
       existingWinner = h1Entry.predictedWinner || "";
       existingPenalty = Number(h1Entry.penalty || 0);
+      existingPenaltyDetails = h1Entry.penaltyDetails || "";
       console.log(`[Penalty-Sync] Inheriting penalty of -${existingPenalty} from 1st innings history.`);
     }
   }
@@ -632,6 +637,7 @@ predictionForm?.addEventListener("submit", async (event) => {
       effectiveUpdate = true;
       useExistingWinner = existingEntry.predictedWinner || "";
       useExistingPenalty = existingEntry.penalty || 0;
+      existingPenaltyDetails = existingEntry.penaltyDetails || "";
     }
   }
 
@@ -678,18 +684,23 @@ predictionForm?.addEventListener("submit", async (event) => {
 
   try {
     const finalPenalty = existingPenalty + addedPenalty;
+    const newDetails = breakdown.length > 0 ? (existingPenaltyDetails ? existingPenaltyDetails + ", " + breakdown.join(", ") : breakdown.join(", ")) : existingPenaltyDetails;
+ 
     await savePrediction(roomId, clientId, {
       clientId,
       name,
       scoreA,
       scoreB,
       predictedWinner,
-      penalty: finalPenalty
+      penalty: finalPenalty,
+      penaltyDetails: newDetails,
+      matchId: currentMeta.matchTitle || "unknown"
     });
     predictionLocked = true;
     isEditingReprediction = false;
     existingWinner = predictedWinner;
     existingPenalty = finalPenalty;
+    existingPenaltyDetails = newDetails;
     syncPredictionAccess(currentMeta);
     setStatus(predictionStatus, "Prediction locked", "neutral");
   } catch (error) {
@@ -1147,10 +1158,10 @@ const renderMatchDetails = (matchId) => {
           p1Score,
           p1ScoreA: pActive.scoreA, // Added for pre-toss dual display
           p1ScoreB: pActive.scoreB, // Added for pre-toss dual display
-          p2Winner,
           p2Guess,
           p2Score,
           penalty: totalPenalty,
+          penaltyDetails: pActive.penaltyDetails || p2Resolved?.penaltyDetails || p1Resolved?.penaltyDetails || "",
           total: (typeof p1Score === "number" || typeof p2Score === "number") 
             ? Math.max(0, (Number(p1Score) || 0) + (Number(p2Score) || 0) - totalPenalty)
             : (p1Score === "Live" || p2Score === "Live" ? "Live" : 0)
@@ -1183,6 +1194,7 @@ const renderMatchDetails = (matchId) => {
         const mismatchPen = (existing.p1Winner && existing.p2Winner &&
           existing.p1Winner.toLowerCase() !== existing.p2Winner.toLowerCase()) ? 20 : 0;
         existing.penalty = storedPen + mismatchPen;
+        existing.penaltyDetails = row.penaltyDetails || existing.penaltyDetails || "";
         
         const n1 = typeof existing.p1Score === "number" ? existing.p1Score : 0;
         const n2 = typeof existing.p2Score === "number" ? existing.p2Score : 0;
@@ -1280,12 +1292,22 @@ const renderMatchDetails = (matchId) => {
         const isMe = myName === rowName && rowName !== "";
 
         const overVal = parseFloat(currentMeta.currentOver || "0");
-        const isBowlingStarted = overVal > 0 && !currentMeta.isInningsBreak;
+        const isLive = (overVal > 0);
+        const isLocked = !!currentMeta.predictionsPaused;
 
-        const hideP1 = !currentMeta.secondInnings && (!isBowlingStarted || !predictionLocked) && !isMe && !currentMeta.predictionsPaused;
-        const hideP2 = currentMeta.secondInnings && (!isBowlingStarted || !predictionLocked) && !isMe && !currentMeta.predictionsPaused;
+        // Participation Check: Has the current viewer submitted for the 2nd innings?
+        // We check if they have a non-empty score for the team currently chasing.
+        const pActive = activePredictions[clientId] || {};
+        const hasPredicted2nd = (predictionLocked && getActiveScore(pActive, currentMeta) !== "---");
 
-        if (hideP1 && row.p1Score !== "-") {
+        // Hard Blind (Participation-Based Reveal)
+        // Global reveal if: Match is locked (>= 3.0 overs).
+        // Partial reveal if: Match has started (0.1+ overs) AND user has predicted.
+        // Otherwise: Hide.
+        const hideP1 = !isMe && (!isLive || !isLocked) && !currentMeta.secondInnings;
+        const hideP2 = !isMe && !isLocked && (!isLive || !hasPredicted2nd) && !!currentMeta.secondInnings;
+
+        if ((hideP1 || hideP2) && row.p1Score !== "-") {
           p1Str = `<span class="dim" style="font-style: italic;"><i class="fa-solid fa-eye-slash" style="margin-right:4px;"></i> Hidden</span>`;
         } else {
           p1Str = row.p1Score === "Live" 
@@ -1316,7 +1338,7 @@ const renderMatchDetails = (matchId) => {
           </td>
           <td style="font-size: 0.9rem;">${p1Str}</td>
           <td style="font-size: 0.9rem;">${p2Str}</td>
-          <td style="font-weight: 700; ${penColor}">${penAmt > 0 ? `-${penAmt}` : "-"}</td>
+          <td style="font-weight: 700; ${penColor}" title="${escapeHtml(row.penaltyDetails || '')}">${penAmt > 0 ? `-${penAmt}` : "-"}</td>
           <td style="text-align: right; font-weight: 800; color: var(--system-green);">${row.total}</td>
         </tr>
       `;

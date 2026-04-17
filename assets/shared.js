@@ -21,6 +21,13 @@ export const getAudienceEntryUrl = () => {
   url.search = "";
   return url.toString();
 };
+ 
+window.showPenaltyBreakdown = (el) => {
+  const details = el.dataset.details;
+  if (!details || details === "undefined") return;
+  const list = details.split(', ').map(line => `• ${line}`).join('\n');
+  alert(`Penalty Breakdown:\n\n${list}`);
+};
 
 export const getClientId = () => {
   const key = "overlaychat-client-id";

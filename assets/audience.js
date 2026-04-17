@@ -623,7 +623,7 @@ predictionForm?.addEventListener("submit", async (event) => {
   let breakdown = [];
   const over = parseFloat(currentMeta.currentOver || "0");
   const overLabel = over > 0 ? (over <= 1.0 ? "the 1st over" : (over <= 2.0 ? "the 2nd over" : "the 3rd over")) : "pre-match";
-  const hLabel = currentMeta.secondInnings ? "H2" : "H1";
+  const inningsName = currentMeta.secondInnings ? "2nd innings" : "1st innings";
   
   // Multi-device protection: if no local prediction, check for name duplicates in other clients
   let effectiveUpdate = predictionLocked && !currentMeta.isInningsBreak;
@@ -647,20 +647,20 @@ predictionForm?.addEventListener("submit", async (event) => {
   } else {
     // 1. Entry/Update Over penalty
     if (!effectiveUpdate) {
-      if (over >= 0.1 && over <= 1.0) { addedPenalty = 5; breakdown.push(`-5 Entry [${hLabel}] (1st Over)`); }
-      else if (over > 1.0 && over <= 2.0) { addedPenalty = 10; breakdown.push(`-10 Entry [${hLabel}] (2nd Over)`); }
-      else if (over > 2.0 && over <= 3.0) { addedPenalty = 15; breakdown.push(`-15 Entry [${hLabel}] (3rd Over)`); }
+      if (over >= 0.1 && over <= 1.0) { addedPenalty = 5; breakdown.push(`-5 for late entry in the 1st over, ${inningsName}`); }
+      else if (over > 1.0 && over <= 2.0) { addedPenalty = 10; breakdown.push(`-10 for late entry in the 2nd over, ${inningsName}`); }
+      else if (over > 2.0 && over <= 3.0) { addedPenalty = 15; breakdown.push(`-15 for late entry in the 3rd over, ${inningsName}`); }
     } else {
-      if (over >= 0.1 && over <= 1.0) { addedPenalty = 5; breakdown.push(`-5 Update [${hLabel}] (1st Over)`); }
-      else if (over > 1.0 && over <= 2.0) { addedPenalty = 15; breakdown.push(`-15 Update [${hLabel}] (2nd Over)`); }
-      else if (over > 2.0 && over <= 3.0) { addedPenalty = 30; breakdown.push(`-30 Update [${hLabel}] (3rd Over)`); }
+      if (over >= 0.1 && over <= 1.0) { addedPenalty = 5; breakdown.push(`-5 for prediction update in the 1st over, ${inningsName}`); }
+      else if (over > 1.0 && over <= 2.0) { addedPenalty = 15; breakdown.push(`-15 for prediction update in the 2nd over, ${inningsName}`); }
+      else if (over > 2.0 && over <= 3.0) { addedPenalty = 30; breakdown.push(`-30 for prediction update in the 3rd over, ${inningsName}`); }
     }
   }
 
   // 2. Winner Change Penalty - Active even during innings break
   if (useExistingWinner && predictedWinner !== useExistingWinner) {
     addedPenalty += 20;
-    breakdown.push(`-20 Winner Change [${hLabel}]`);
+    breakdown.push(`-20 for winner team change, ${inningsName}`);
   }
 
   // Final synchronization of existing state (handling both local locks and device jumps)
@@ -696,7 +696,7 @@ predictionForm?.addEventListener("submit", async (event) => {
       penalty: finalPenalty,
       penaltyDetails: newDetails,
       matchId: currentMeta.matchTitle || "unknown",
-      currentInnings: hLabel
+      currentInnings: currentMeta.secondInnings ? "H2" : "H1"
     });
     predictionLocked = true;
     isEditingReprediction = false;
@@ -1082,6 +1082,14 @@ const renderHistoryList = () => {
 
 const renderMatchDetails = (matchId) => {
   let standings = [];
+
+  // Helper: pick the correct field based on which score is disabled in meta
+  // Falls back to scoreA ?? scoreB when both are active
+  const getActiveScore = (pred, meta) => {
+    if (meta.disableScoreA) return pred.scoreB ?? "---";
+    if (meta.disableScoreB) return pred.scoreA ?? "---";
+    return (pred.scoreA ?? pred.scoreB) ?? "---";
+  };
   
   if (matchId === "live") {
     const overVal = parseFloat(currentMeta.currentOver || "0");
@@ -1108,14 +1116,6 @@ const renderMatchDetails = (matchId) => {
       let p1Winner = "", p1Guess = "", p1Score = "-";
       let p2Winner = "", p2Guess = "", p2Score = "-";
       let total = 0;
-
-      // Helper: pick the correct field based on which score is disabled in meta
-      // Falls back to scoreA ?? scoreB when both are active
-      const getActiveScore = (pred, meta) => {
-        if (meta.disableScoreA) return pred.scoreB ?? "---";
-        if (meta.disableScoreB) return pred.scoreA ?? "---";
-        return (pred.scoreA ?? pred.scoreB) ?? "---";
-      };
 
       // Innings 1 logic
       if (p1Resolved) {
@@ -1299,17 +1299,15 @@ const renderMatchDetails = (matchId) => {
 
         // Participation Check: Has the current viewer submitted for the 2nd innings?
         // We check if they have a non-empty score for the team currently chasing.
-        const pActive = activePredictions[clientId] || {};
-        const hasPredicted2nd = (predictionLocked && getActiveScore(pActive, currentMeta) !== "---");
+        const viewerPred = activePredictions[clientId] || {};
+        const hasPredicted2nd = (predictionLocked && getActiveScore(viewerPred, currentMeta) !== "---");
 
         // Hard Blind (Participation-Based Reveal)
-        // Global reveal if: Match is locked (>= 3.0 overs).
-        // Partial reveal if: Match has started (0.1+ overs) AND user has predicted.
-        // Otherwise: Hide.
         const hideP1 = !isMe && (!isLive || !isLocked) && !currentMeta.secondInnings;
+        // P2 reveal logic: Participation required between 0.1 and 2.6 overs.
         const hideP2 = !isMe && !isLocked && (!isLive || !hasPredicted2nd) && !!currentMeta.secondInnings;
 
-        if ((hideP1 || hideP2) && row.p1Score !== "-") {
+        if (hideP1 && row.p1Score !== "-") {
           p1Str = `<span class="dim" style="font-style: italic;"><i class="fa-solid fa-eye-slash" style="margin-right:4px;"></i> Hidden</span>`;
         } else {
           p1Str = row.p1Score === "Live" 
@@ -1340,7 +1338,13 @@ const renderMatchDetails = (matchId) => {
           </td>
           <td style="font-size: 0.9rem;">${p1Str}</td>
           <td style="font-size: 0.9rem;">${p2Str}</td>
-          <td style="font-weight: 700; ${penColor}" title="${escapeHtml(row.penaltyDetails || '')}">${penAmt > 0 ? `-${penAmt}` : "-"}</td>
+          <td 
+            style="font-weight: 700; ${penColor} ${penAmt > 0 ? 'cursor: pointer; text-decoration: underline dotted;' : ''}" 
+            data-details="${escapeHtml(row.penaltyDetails || '')}"
+            onclick="showPenaltyBreakdown(this)"
+          >
+            ${penAmt > 0 ? `-${penAmt}` : "-"}
+          </td>
           <td style="text-align: right; font-weight: 800; color: var(--system-green);">${row.total}</td>
         </tr>
       `;

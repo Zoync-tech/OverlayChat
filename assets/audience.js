@@ -623,6 +623,7 @@ predictionForm?.addEventListener("submit", async (event) => {
   let breakdown = [];
   const over = parseFloat(currentMeta.currentOver || "0");
   const overLabel = over > 0 ? (over <= 1.0 ? "the 1st over" : (over <= 2.0 ? "the 2nd over" : "the 3rd over")) : "pre-match";
+  const hLabel = currentMeta.secondInnings ? "H2" : "H1";
   
   // Multi-device protection: if no local prediction, check for name duplicates in other clients
   let effectiveUpdate = predictionLocked && !currentMeta.isInningsBreak;
@@ -646,20 +647,20 @@ predictionForm?.addEventListener("submit", async (event) => {
   } else {
     // 1. Entry/Update Over penalty
     if (!effectiveUpdate) {
-      if (over >= 0.1 && over <= 1.0) { addedPenalty = 5; breakdown.push("-5 Entry Penalty (1st Over)"); }
-      else if (over > 1.0 && over <= 2.0) { addedPenalty = 10; breakdown.push("-10 Entry Penalty (2nd Over)"); }
-      else if (over > 2.0 && over <= 3.0) { addedPenalty = 15; breakdown.push("-15 Entry Penalty (3rd Over)"); }
+      if (over >= 0.1 && over <= 1.0) { addedPenalty = 5; breakdown.push(`-5 Entry [${hLabel}] (1st Over)`); }
+      else if (over > 1.0 && over <= 2.0) { addedPenalty = 10; breakdown.push(`-10 Entry [${hLabel}] (2nd Over)`); }
+      else if (over > 2.0 && over <= 3.0) { addedPenalty = 15; breakdown.push(`-15 Entry [${hLabel}] (3rd Over)`); }
     } else {
-      if (over >= 0.1 && over <= 1.0) { addedPenalty = 5; breakdown.push("-5 Update Penalty (1st Over)"); }
-      else if (over > 1.0 && over <= 2.0) { addedPenalty = 15; breakdown.push("-15 Update Penalty (2nd Over)"); }
-      else if (over > 2.0 && over <= 3.0) { addedPenalty = 30; breakdown.push("-30 Update Penalty (3rd Over)"); }
+      if (over >= 0.1 && over <= 1.0) { addedPenalty = 5; breakdown.push(`-5 Update [${hLabel}] (1st Over)`); }
+      else if (over > 1.0 && over <= 2.0) { addedPenalty = 15; breakdown.push(`-15 Update [${hLabel}] (2nd Over)`); }
+      else if (over > 2.0 && over <= 3.0) { addedPenalty = 30; breakdown.push(`-30 Update [${hLabel}] (3rd Over)`); }
     }
   }
 
   // 2. Winner Change Penalty - Active even during innings break
   if (useExistingWinner && predictedWinner !== useExistingWinner) {
     addedPenalty += 20;
-    breakdown.push("-20 Winner Change Penalty");
+    breakdown.push(`-20 Winner Change [${hLabel}]`);
   }
 
   // Final synchronization of existing state (handling both local locks and device jumps)
@@ -694,7 +695,8 @@ predictionForm?.addEventListener("submit", async (event) => {
       predictedWinner,
       penalty: finalPenalty,
       penaltyDetails: newDetails,
-      matchId: currentMeta.matchTitle || "unknown"
+      matchId: currentMeta.matchTitle || "unknown",
+      currentInnings: hLabel
     });
     predictionLocked = true;
     isEditingReprediction = false;

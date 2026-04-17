@@ -25,7 +25,7 @@ Third Over (2.1 - 3.0): -15 pts.
 After 3.0 Overs: Predictions are locked anyway (as per your current logic).
 Every prediction update or change, not stacked w/ the above, this is only applicable for update
 First Over (0.1 - 1.0): -5 pts.
-Second Over (1.1 - 2.0): -20 pts.
+Second Over (1.1 - 2.0): -15 pts.
 Third Over (2.1 - 3.0): -30 pts.
 If prediction changes the team winner -20 flat for either innings
 

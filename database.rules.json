@@ -24,6 +24,10 @@
           ".read": true,
           ".write": true
         },
+        "prediction_history": {
+          ".read": true,
+          ".write": true
+        },
         "innings_history": {
           ".read": true,
           ".write": true

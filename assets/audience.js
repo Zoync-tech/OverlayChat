@@ -695,7 +695,8 @@ predictionForm?.addEventListener("submit", async (event) => {
   let breakdown = [];
   const over = parseFloat(currentMeta.currentOver || "0");
   const overLabel = over > 0 ? (over <= 1.0 ? "the 1st over" : (over <= 2.0 ? "the 2nd over" : "the 3rd over")) : "pre-match";
-  const inningsName = currentMeta.secondInnings ? "2nd innings" : "1st innings";
+  const isActually2nd = currentMeta.secondInnings || isEarlySubmissionMode;
+  const inningsName = isActually2nd ? "2nd innings" : "1st innings";
   
   // Multi-device protection: if no local prediction, check for name duplicates in other clients
   let effectiveUpdate = predictionLocked && !currentMeta.isInningsBreak;
@@ -714,8 +715,8 @@ predictionForm?.addEventListener("submit", async (event) => {
     }
   }
 
-  if (currentMeta.isInningsBreak) {
-    addedPenalty = 0; // No late entry penalty during break
+  if (currentMeta.isInningsBreak || isEarlySubmissionMode) {
+    addedPenalty = 0; // No late entry penalty during break or early submission
   } else {
     // 1. Entry/Update Over penalty
     if (!effectiveUpdate) {
@@ -729,10 +730,12 @@ predictionForm?.addEventListener("submit", async (event) => {
     }
   }
 
-  // 2. Winner Change Penalty - Active even during innings break
-  if (useExistingWinner && predictedWinner !== useExistingWinner) {
+  // 2. Winner Change Penalty - Active even during innings break and early submissions
+  // Ignore pre-toss submissions
+  const isPreToss = (!currentMeta.tossWinner || (currentMeta.currentOver === "0.0" && !currentMeta.secondInnings));
+  if (useExistingWinner && predictedWinner !== useExistingWinner && !isPreToss) {
     addedPenalty += 20;
-    breakdown.push(`-20 for winner team change in ${inningsName}`);
+    breakdown.push(`-20 for winner team change, 2nd innings`);
   }
 
   // Final synchronization of existing state (handling both local locks and device jumps)
@@ -742,8 +745,13 @@ predictionForm?.addEventListener("submit", async (event) => {
   if (addedPenalty > 0) {
     const totalNew = existingPenalty + addedPenalty;
     const isFirstTime = !effectiveUpdate && !predictionLocked;
+    let reasonText = `The game has already started and we're in ${overLabel}.`;
+    if (isEarlySubmissionMode || currentMeta.isInningsBreak) {
+       reasonText = `You are switching your winner prediction.`;
+    }
+
     const msg = `CAUTION: This action will incur a penalty of -${addedPenalty} pts.\n\n` +
-                `Reason: The game has already started and we're in ${overLabel}.\n` +
+                `Reason: ${reasonText}\n` +
                 `Breakdown: ${breakdown.join(", ")}\n\n` +
                 `Your total match penalty will be -${totalNew} pts.\n\n` +
                 (isFirstTime ? `Note: If you don't submit a prediction now, you won't receive ANY points for this innings.\n\n` : "") +
@@ -757,10 +765,10 @@ predictionForm?.addEventListener("submit", async (event) => {
 
   try {
     const finalPenalty = existingPenalty + addedPenalty;
-    const newDetails = breakdown.length > 0 ? (existingPenaltyDetails ? existingPenaltyDetails + ", " + breakdown.join(", ") : breakdown.join(", ")) : existingPenaltyDetails;
+    const newDetails = breakdown.length > 0 ? (existingPenaltyDetails ? existingPenaltyDetails + ", " + breakdown.join(", ") : breakdown.join(", ")) : (isEarlySubmissionMode ? existingPenaltyDetails || "Early submission (No penalty)" : existingPenaltyDetails);
  
     if (isEarlySubmissionMode) {
-      // 1. Save to the temporary early node (no penalties for early submission)
+      // 1. Save to the temporary early node (with proper inherited penalties)
       const earlyRef = roomRef(roomId, `early_2nd_predictions/${clientId}`);
       await set(earlyRef, {
         clientId,
@@ -768,8 +776,8 @@ predictionForm?.addEventListener("submit", async (event) => {
         scoreA,
         scoreB,
         predictedWinner,
-        penalty: 0,
-        penaltyDetails: "Early submission (No penalty)",
+        penalty: finalPenalty,
+        penaltyDetails: newDetails,
         submittedAt: Date.now()
       });
       

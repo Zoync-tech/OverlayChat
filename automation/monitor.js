@@ -891,6 +891,10 @@ const runMonitor = async () => {
                   timestamp: new Date().toISOString()
                 }
               );
+
+              // Pause monitoring for 10 minutes during the break to keep predictions hidden (Blind Mode)
+              console.log(`[Break] 1st Innings complete. Sleeping for 10 minutes before resume...`);
+              await sleep(10 * 60 * 1000);
             }
           }
           // 3. SECOND INNINGS

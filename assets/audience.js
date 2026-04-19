@@ -1048,8 +1048,19 @@ const renderLeaderboard = (standings = []) => {
     return;
   }
 
+  let filteredStandings = [...standings];
+  if (seasonSortMode === "ppg") {
+    const filterSelect = document.getElementById("ppgMatchFilter");
+    if (filterSelect) {
+      const minMatches = parseInt(filterSelect.value) || 0;
+      if (minMatches > 0) {
+        filteredStandings = filteredStandings.filter(p => (p.matchCount || 1) >= minMatches);
+      }
+    }
+  }
+
   // Sort based on current mode
-  const sorted = [...standings].sort((a, b) => {
+  const sorted = filteredStandings.sort((a, b) => {
     if (seasonSortMode === "ppg") return b.ppg - a.ppg;
     return b.total - a.total;
   });
@@ -1118,9 +1129,23 @@ document.querySelectorAll(".l-tab").forEach(tab => {
     
     seasonSortMode = mode;
     document.querySelectorAll(".l-tab").forEach(t => t.classList.toggle("active", t.dataset.mode === mode));
+    
+    // Toggle filter visibility
+    const filterWrapper = document.getElementById("ppgFilterWrapper");
+    if (filterWrapper) {
+      filterWrapper.classList.toggle("hidden", mode !== "ppg");
+    }
+    
     renderLeaderboard(localStandings);
   });
 });
+
+const ppgMatchFilter = document.getElementById("ppgMatchFilter");
+if (ppgMatchFilter) {
+  ppgMatchFilter.addEventListener("change", () => {
+    renderLeaderboard(localStandings);
+  });
+}
 
 // Modal Nav Tab Listeners
 modalNavTabs.forEach(tab => {

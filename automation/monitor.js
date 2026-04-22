@@ -920,6 +920,8 @@ const runMonitor = async () => {
               // If the chasing team mathematically crossed the target, hard-declare them the winner
               if (!matchWinner && s1 && s2.r > s1.r) {
                 matchWinner = chasingTeam;
+              } else if (!matchWinner && s1 && s2.r <= s1.r && (s2.w >= 10 || s2.o >= 19.6)) {
+                matchWinner = battingTeamFull; // Defending team won
               }
               const isChaserWinner = matchWinner && !isTeamMatch(matchWinner, battingTeamFull);
 
@@ -1133,6 +1135,13 @@ ${top3Lines}
                 delay = 10 * 60 * 1000;
               }
             }
+          }
+
+          // HIGH WICKET FALLBACK
+          // If 8 or more wickets are down in either innings, switch to 1 min polling
+          // to prevent missing the end of a match during the 10 min middle-over sleep phase
+          if ((s1 && s1.w >= 8) || (s2 && s2.w >= 8)) {
+            delay = 1 * 60 * 1000;
           }
         }
 

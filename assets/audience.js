@@ -596,11 +596,7 @@ if (!roomSelected) {
 
       // If we are currently looking at the live match details in the modal, re-render it
       if (!matchDetailView.classList.contains("hidden") && matchDetailTitle.dataset.matchId === "live") {
-        if (isBlind) {
-          matchDetailList.innerHTML = `<div class="blind-notice"><h3>Predictions are blind</h3><p>${!isMatchStarted ? "Standings will be revealed once the match starts!" : "Make your prediction first to see what others guessed!"}</p></div>`;
-        } else {
-          renderMatchDetails("live");
-        }
+        renderMatchDetails("live");
       }
     });
   }
@@ -1361,6 +1357,19 @@ const renderMatchDetails = (matchId) => {
     standings = Array.from(nameMap.values());
 
     standings.sort((a, b) => {
+      // 0. BLIND MODE OVERRIDE:
+      // If the match hasn't started, we are in the innings break, OR the current user
+      // hasn't predicted yet, enforce alphabetical sorting so they don't see 
+      // relative rankings prematurely.
+      const overVal = parseFloat(currentMeta.currentOver || "0");
+      const isMatchStarted = overVal > 0 || currentMeta.secondInnings;
+      const isGlobalBlind = !isMatchStarted || currentMeta.isInningsBreak;
+      const isUserBlind = !isMatchStarted || !predictionLocked;
+      
+      if (isGlobalBlind || isUserBlind) {
+        return (a.name || "").localeCompare(b.name || "");
+      }
+
       // 1. Live game sorting based on score predictions (Primary)
       if (!currentMeta.secondInnings) {
         const valA = isNaN(Number(a.p1Guess)) ? Infinity : Number(a.p1Guess);

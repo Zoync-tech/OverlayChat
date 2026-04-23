@@ -200,6 +200,17 @@ const adminActionMarkup = (type, id) =>
 
 const renderPredictions = (predictions) => {
   const getSortedPredictions = (list, meta) => {
+    // BLIND MODE DETECTION:
+    // 1. Pre-match (Over 0.0 and 1st innings)
+    // 2. Innings Break (Hard blind)
+    const overVal = parseFloat(meta.currentOver || "0");
+    const isMatchStarted = overVal > 0 || meta.secondInnings;
+    const isBlindMode = !isMatchStarted || meta.isInningsBreak;
+
+    if (isBlindMode) {
+      return [...list].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    }
+
     if (meta.predictionSort !== "score") {
       return sortByTimestampDescending(list, "updatedAt");
     }
